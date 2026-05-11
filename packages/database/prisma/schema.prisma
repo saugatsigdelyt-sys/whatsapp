@@ -1,0 +1,253 @@
+// Prisma Schema — WhatsApp SaaS Platform
+// Run: pnpm db:push  (dev) or pnpm db:migrate (staging/prod)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         UserRole @default(MEMBER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  businessMembers BusinessMember[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  MEMBER
+}
+
+// ─────────────────────────────────────────────
+// BUSINESS (TENANT)
+// ─────────────────────────────────────────────
+
+model Business {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members      BusinessMember[]
+  credentials  WaCredential?
+  messages     Message[]
+  webhookSubs  WebhookSubscription[]
+  events       AccountEvent[]
+  phoneNumbers PhoneNumber[]
+
+  @@map("businesses")
+}
+
+model BusinessMember {
+  id         String             @id @default(cuid())
+  businessId String
+  userId     String
+  role       BusinessMemberRole @default(VIEWER)
+  createdAt  DateTime           @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId])
+  @@map("business_members")
+}
+
+enum BusinessMemberRole {
+  OWNER
+  ADMIN
+  VIEWER
+}
+
+// ─────────────────────────────────────────────
+// WHATSAPP CREDENTIALS (encrypted at rest)
+// ─────────────────────────────────────────────
+
+model WaCredential {
+  id String @id @default(cuid())
+
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  // All sensitive fields stored AES-256 encrypted
+  appId             String // Meta App ID (not sensitive but kept consistent)
+  appSecretEnc      String // encrypted App Secret
+  accessTokenEnc    String // encrypted System User Admin Access Token
+  wabaId            String // WhatsApp Business Account ID
+  phoneNumberId     String // Default phone number ID
+
+  webhookRegistered Boolean  @default(false)
+  lastVerifiedAt    DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("wa_credentials")
+}
+
+// ─────────────────────────────────────────────
+// PHONE NUMBERS
+// ─────────────────────────────────────────────
+
+model PhoneNumber {
+  id             String  @id @default(cuid())
+  businessId     String
+  phoneNumberId  String  @unique // Meta phone number ID
+  displayPhone   String
+  verifiedName   String?
+  qualityRating  String? // GREEN | YELLOW | RED
+  status         String? // CONNECTED | DISCONNECTED etc.
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("phone_numbers")
+}
+
+// ─────────────────────────────────────────────
+// MESSAGES (inbound + outbound)
+// ─────────────────────────────────────────────
+
+model Message {
+  id         String        @id @default(cuid())
+  businessId String
+  waMessageId String       @unique // Meta's message ID (wamid)
+  direction  MessageDirection
+  status     MessageStatus @default(RECEIVED)
+
+  fromPhone  String
+  toPhone    String
+  type       MessageType   @default(TEXT)
+
+  // Text content (for text messages)
+  textBody   String?
+
+  // Media (for image/video/audio/document)
+  mediaId    String?
+  mediaMimeType String?
+  mediaUrl   String?
+  mediaCaption  String?
+
+  // Interactive / button replies
+  interactiveType String?
+  interactivePayload Json?
+
+  // Full raw payload stored for debugging
+  rawPayload Json?
+
+  phoneNumberId String?
+  phoneNumber   PhoneNumber? @relation(fields: [phoneNumberId], references: [id])
+  business      Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  timestamp  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([businessId, timestamp(sort: Desc)])
+  @@index([waMessageId])
+  @@map("messages")
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  RECEIVED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  STICKER
+  LOCATION
+  CONTACTS
+  INTERACTIVE
+  BUTTON
+  UNKNOWN
+}
+
+// ─────────────────────────────────────────────
+// WEBHOOK SUBSCRIPTIONS
+// ─────────────────────────────────────────────
+
+model WebhookSubscription {
+  id         String  @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  // The 11 webhook fields
+  accountAlerts               Boolean @default(false)
+  accountReviewUpdate         Boolean @default(false)
+  accountUpdate               Boolean @default(false)
+  businessCapacityUpdate      Boolean @default(false)
+  messageTemplateQualityUpdate Boolean @default(false)
+  messageTemplateStatusUpdate Boolean @default(false)
+  messages                    Boolean @default(true)
+  phoneNumberNameUpdate       Boolean @default(false)
+  phoneNumberQualityUpdate    Boolean @default(false)
+  security                    Boolean @default(false)
+  templateCategoryUpdate      Boolean @default(false)
+
+  subscribedAt DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([businessId])
+  @@map("webhook_subscriptions")
+}
+
+// ─────────────────────────────────────────────
+// ACCOUNT EVENTS (non-message webhook events)
+// ─────────────────────────────────────────────
+
+model AccountEvent {
+  id         String           @id @default(cuid())
+  businessId String
+  business   Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  field      WebhookEventField
+  payload    Json              // full raw event payload
+  processed  Boolean           @default(false)
+  createdAt  DateTime          @default(now())
+
+  @@index([businessId, field, createdAt(sort: Desc)])
+  @@map("account_events")
+}
+
+enum WebhookEventField {
+  ACCOUNT_ALERTS
+  ACCOUNT_REVIEW_UPDATE
+  ACCOUNT_UPDATE
+  BUSINESS_CAPACITY_UPDATE
+  MESSAGE_TEMPLATE_QUALITY_UPDATE
+  MESSAGE_TEMPLATE_STATUS_UPDATE
+  MESSAGES
+  PHONE_NUMBER_NAME_UPDATE
+  PHONE_NUMBER_QUALITY_UPDATE
+  SECURITY
+  TEMPLATE_CATEGORY_UPDATE
+}

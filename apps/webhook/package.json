@@ -1,0 +1,27 @@
+{
+  "name": "@whatsapp-saas/webhook",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@whatsapp-saas/database": "workspace:*",
+    "@whatsapp-saas/types": "workspace:*",
+    "express": "^4.19.0",
+    "bullmq": "^5.7.0",
+    "ioredis": "^5.4.0",
+    "dotenv": "^16.4.0",
+    "morgan": "^1.10.0",
+    "helmet": "^7.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "ts-node-dev": "^2.0.0",
+    "@types/express": "^4.17.0",
+    "@types/morgan": "^1.9.0",
+    "@types/node": "^20.0.0"
+  }
+}
