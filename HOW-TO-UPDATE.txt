@@ -1,0 +1,258 @@
+===============================================================
+  WHATSAPI.BUZZ — HOW TO ADD FEATURES & DEPLOY UPDATES
+  Server  : 173.208.251.202
+  User    : silent
+  Project : /home/silent/whatsapp-saas/WHATSAPP
+===============================================================
+
+This file explains how to ship new features without starting
+from scratch. The workflow is always the same 4 steps.
+
+GitHub repo: https://github.com/saugatsigdelyt-sys/whatsapp
+
+
+---------------------------------------------------------------
+THE GOLDEN RULE
+---------------------------------------------------------------
+
+Every feature lives in ONE of these places:
+
+  apps/api/src/         — backend routes, business logic, Meta API calls
+  apps/webhook/src/     — processes incoming WhatsApp events from Meta
+  apps/web/app/         — Next.js pages and UI components
+  packages/database/    — Prisma schema (only touch if adding DB columns)
+
+When adding a feature, decide which of these it touches, make
+the code changes locally, then follow the deploy steps below.
+
+
+---------------------------------------------------------------
+STANDARD DEPLOY WORKFLOW (USE THIS EVERY TIME)
+---------------------------------------------------------------
+
+1. MAKE YOUR CHANGES LOCALLY
+   Edit files in your C:\Users\DURSAU\Documents\Claude\Projects\WHATSAPP folder.
+   Ask Claude to help write the code.
+
+2. PUSH TO GITHUB (from your local Windows terminal)
+     cd C:\Users\DURSAU\Documents\Claude\Projects\WHATSAPP
+     git add -A
+     git commit -m "describe what you changed"
+     git push
+
+3. PULL ON THE SERVER (SSH in, then run)
+     cd /home/silent/whatsapp-saas/WHATSAPP
+     git pull
+
+4. BUILD AND RESTART
+     pnpm build
+     pm2 restart all
+
+   If you changed the Prisma schema, also run BEFORE pnpm build:
+     pnpm --filter @whatsapp-saas/database build
+     pnpm --filter @whatsapp-saas/database exec prisma db push
+
+5. VERIFY
+     pm2 status
+     curl https://api.whatsapi.buzz/health
+
+
+---------------------------------------------------------------
+ONE-TIME SERVER GIT SETUP (already done — for reference only)
+---------------------------------------------------------------
+
+   cd /home/silent/whatsapp-saas/WHATSAPP
+   git remote add origin https://github.com/saugatsigdelyt-sys/whatsapp.git
+   git fetch origin
+   git checkout -b main --track origin/main
+
+
+---------------------------------------------------------------
+STEP-BY-STEP: HOW TO DEPLOY A CODE CHANGE (detailed)
+---------------------------------------------------------------
+
+1. MAKE YOUR CHANGES LOCALLY
+   Edit files in your C:\Users\DURSAU\Documents\Claude\Projects\WHATSAPP folder.
+   Ask Claude to help write the code — give it this folder as context.
+
+2. PUSH TO GITHUB AND PULL ON SERVER
+   Local:  git add -A && git commit -m "feat: description" && git push
+   Server: cd /home/silent/whatsapp-saas/WHATSAPP && git pull
+
+3. REBUILD ONLY WHAT CHANGED
+   You don't need to rebuild everything — only the affected app(s):
+
+   If you changed apps/api:
+     cd /home/silent/whatsapp-saas/WHATSAPP
+     pnpm --filter @whatsapp-saas/api build
+     pm2 restart wa-api
+
+   If you changed apps/webhook:
+     pnpm --filter @whatsapp-saas/webhook build
+     pm2 restart wa-webhook
+
+   If you changed apps/web:
+     pnpm --filter @whatsapp-saas/web build
+     pm2 restart wa-web
+
+   If you changed the Prisma schema (packages/database/prisma/schema.prisma):
+     pnpm --filter @whatsapp-saas/database build
+     pnpm --filter @whatsapp-saas/database exec prisma db push
+     # Then rebuild all apps that use the database:
+     pnpm --filter @whatsapp-saas/api build && pm2 restart wa-api
+     pnpm --filter @whatsapp-saas/webhook build && pm2 restart wa-webhook
+
+   If you changed multiple apps at once:
+     pnpm build
+     pm2 restart all
+
+4. VERIFY
+     pm2 status                        — all 3 should show "online"
+     pm2 logs wa-api --lines 10 --nostream
+     curl https://api.whatsapi.buzz/health
+
+
+---------------------------------------------------------------
+COMMON FEATURE ADDITIONS — WHERE TO LOOK
+---------------------------------------------------------------
+
+ADD A NEW API ENDPOINT
+  File: apps/api/src/routes/SOMETHING.ts
+  Then register it in: apps/api/src/index.ts
+  Pattern: copy any existing route file as a template.
+  Rebuild: api only.
+
+ADD A NEW DASHBOARD PAGE
+  File: apps/web/app/(dashboard)/dashboard/PAGENAME/page.tsx
+  The (dashboard) folder automatically wraps it in the sidebar layout.
+  Rebuild: web only.
+
+ADD A NEW DATABASE TABLE/COLUMN
+  File: packages/database/prisma/schema.prisma
+  Add your model or field, then run:
+    pnpm --filter @whatsapp-saas/database exec prisma db push
+    pnpm --filter @whatsapp-saas/database build
+  Then rebuild api and webhook.
+
+CHANGE HOW INCOMING WHATSAPP MESSAGES ARE HANDLED
+  Files: apps/webhook/src/handlers/messages.ts
+         apps/webhook/src/handlers/account-events.ts
+  Rebuild: webhook only.
+
+ADD A NEW META API CALL (send template, get media, etc.)
+  File: apps/api/src/lib/meta.ts
+  Add a new exported function. Then call it from a route.
+  Rebuild: api only.
+
+
+---------------------------------------------------------------
+ENVIRONMENT VARIABLES
+---------------------------------------------------------------
+
+If a feature needs a new env variable, add it to:
+  apps/api/.env        — for the API service
+  apps/webhook/.env    — for the webhook receiver
+  apps/web/.env.local  — for the frontend (use NEXT_PUBLIC_ prefix for browser-visible vars)
+
+After adding env vars:
+  pm2 restart wa-api --update-env
+  pm2 restart wa-webhook --update-env
+  pm2 restart wa-web --update-env
+
+
+---------------------------------------------------------------
+CURRENT ENVIRONMENT VARIABLE VALUES (SERVER)
+---------------------------------------------------------------
+
+apps/api/.env:
+  DATABASE_URL  = postgresql://postgres.dhbmbscmsazbmsdrcpma:***@aws-1-eu-west-3.pooler.supabase.com:6543/postgres?sslmode=require&pgbouncer=true
+  REDIS_URL     = rediss://default:***@creative-teal-121123.upstash.io:6379
+  JWT_SECRET    = (set on server — keep secret)
+  ENCRYPTION_KEY= (set on server — keep secret)
+  WEBHOOK_VERIFY_TOKEN   = dEecTARRJTq7EcVPOlKRP2RvlDQL8UCzkpeWJz1fcPx82g0P0OKP5ELbaHtE24G7
+  WEBHOOK_CALLBACK_URL   = https://webhook.whatsapi.buzz/webhook
+  WEBHOOK_BASE_URL       = https://webhook.whatsapi.buzz
+  FRONTEND_URL           = https://whatsapi.buzz
+  PORT = 4000
+
+apps/webhook/.env:
+  DATABASE_URL  = postgresql://postgres.dhbmbscmsazbmsdrcpma:***@aws-1-eu-west-3.pooler.supabase.com:6543/postgres?sslmode=require&pgbouncer=true
+  REDIS_URL     = (same as api)
+  WEBHOOK_VERIFY_TOKEN = (same as api)
+  PORT = 4001
+
+apps/web/.env.local:
+  NEXTAUTH_SECRET = (set on server)
+  NEXTAUTH_URL    = https://whatsapi.buzz
+  NEXT_PUBLIC_API_URL = https://api.whatsapi.buzz
+
+
+---------------------------------------------------------------
+KEY THINGS THAT WENT WRONG DURING FIRST DEPLOY (DON'T REPEAT)
+---------------------------------------------------------------
+
+1. DATABASE_URL must use postgres.PROJECT_REF as username:
+   WRONG:   postgresql://postgres:PASSWORD@...
+   CORRECT: postgresql://postgres.dhbmbscmsazbmsdrcpma:PASSWORD@...
+
+2. DATABASE_URL must have &pgbouncer=true for Supabase transaction pooler (port 6543).
+
+3. apps/api/tsconfig.json must have "strict": false and "declaration": false
+   (otherwise TypeScript errors on Express Router types).
+
+4. packages/database must be built FIRST before building api or webhook:
+   pnpm --filter @whatsapp-saas/database build
+
+5. ecosystem.config.js uses node_modules/next/dist/bin/next (not the .bin symlink)
+   and dist paths are dist/apps/api/src/index.js (not dist/index.js).
+
+6. After ANY nginx config change: sudo nginx -t && sudo systemctl reload nginx
+
+7. WABA ID in credentials must exactly match the entry.id Meta sends in webhooks.
+   If messages aren't arriving, check: pm2 logs wa-webhook --lines 20 --nostream
+   and look for "Unknown WABA ID: XXXXXX" to get the real ID.
+
+
+---------------------------------------------------------------
+HOW TO ASK CLAUDE TO ADD A FEATURE
+---------------------------------------------------------------
+
+When you come back with a new feature request, tell Claude:
+
+  "I want to add [FEATURE]. Here is my project context:
+   - This file (HOW-TO-UPDATE.txt) has the full setup
+   - The project is at C:\Users\DURSAU\Documents\Claude\Projects\WHATSAPP
+   - Server: 173.208.251.202, user: silent, path: /home/silent/whatsapp-saas/WHATSAPP"
+
+Claude will:
+  1. Read the relevant existing files
+  2. Write the new code locally
+  3. Give you the exact commands to paste on the server
+  4. Tell you which service(s) to rebuild
+
+You never need to start from scratch — every change is incremental.
+
+
+---------------------------------------------------------------
+USEFUL SERVER COMMANDS CHEATSHEET
+---------------------------------------------------------------
+
+pm2 status                    — see all 3 services
+pm2 logs wa-api --lines 30    — API logs
+pm2 logs wa-webhook --lines 30— Webhook logs
+pm2 logs wa-web --lines 30    — Frontend logs
+pm2 restart all               — restart everything
+pm2 restart wa-api --update-env — restart + reload .env
+
+curl https://api.whatsapi.buzz/health    — API health check
+curl -I https://whatsapi.buzz            — check frontend
+
+sudo nginx -t                 — test nginx config
+sudo systemctl reload nginx   — apply nginx changes
+
+cd /home/silent/whatsapp-saas/WHATSAPP   — project root
+pnpm build                               — build all apps
+
+===============================================================
+END
+===============================================================
