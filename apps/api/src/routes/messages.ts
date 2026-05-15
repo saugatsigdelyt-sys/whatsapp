@@ -93,7 +93,7 @@ messagesRouter.post("/send", async (req, res, next) => {
     const body = sendSchema.parse(req.body);
     const businessId = req.user!.businessId!;
 
-    const cred = await prisma.waCredential.findUnique({ where: { businessId } });
+    const cred = await prisma.waCredential.findFirst({ where: { businessId } });
     if (!cred) {
       return res.status(400).json({ success: false, error: "No WA credentials configured" });
     }

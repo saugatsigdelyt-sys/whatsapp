@@ -2,7 +2,9 @@
   "name": "@whatsapp-saas/database",
   "version": "0.0.1",
   "private": true,
+  "main": "./dist/index.js",
   "scripts": {
+    "build": "tsc",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -19,6 +21,6 @@
     "@types/node": "^20.0.0"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./dist/index.js"
   }
 }

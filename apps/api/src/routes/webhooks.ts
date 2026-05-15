@@ -25,17 +25,20 @@ webhooksRouter.post("/register", async (req, res, next) => {
   try {
     const businessId = req.user!.businessId!;
 
-    const cred = await prisma.waCredential.findUnique({ where: { businessId } });
+    const cred = await prisma.waCredential.findFirst({ where: { businessId } });
     if (!cred) {
       return res.status(400).json({ success: false, error: "Import credentials first" });
     }
 
+    const appSecret = decrypt(cred.appSecretEnc);
     const accessToken = decrypt(cred.accessTokenEnc);
-    const callbackUrl = process.env.WEBHOOK_CALLBACK_URL ?? `${process.env.NEXT_PUBLIC_WEBHOOK_URL}/webhook`;
+    const callbackUrl = process.env.WEBHOOK_CALLBACK_URL ?? `${process.env.WEBHOOK_BASE_URL}/webhook`;
     const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN!;
 
     const result = await registerWebhook({
       appId: cred.appId,
+      appSecret,
+      wabaId: cred.wabaId,
       accessToken,
       callbackUrl,
       verifyToken,
@@ -47,7 +50,7 @@ webhooksRouter.post("/register", async (req, res, next) => {
 
     // Update credential and create subscription record
     await prisma.waCredential.update({
-      where: { businessId },
+      where: { id: cred.id },
       data: { webhookRegistered: true },
     });
 

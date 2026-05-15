@@ -1,0 +1,288 @@
+===============================================================
+  WHATSAPI.BUZZ — DEPLOYMENT GUIDE (STEPS 8 ONWARDS)
+  Server IP : 173.208.251.202
+  Domain    : whatsapi.buzz
+  User      : silent
+  Project   : /home/silent/whatsapp-saas/WHATSAPP
+===============================================================
+
+NOTE: All commands below are run inside your SSH session
+      unless marked [WINDOWS TERMINAL].
+
+
+---------------------------------------------------------------
+STEP 8 — CREATE ENVIRONMENT FILES ON THE SERVER
+---------------------------------------------------------------
+
+First, navigate to the project:
+
+  cd /home/silent/whatsapp-saas/WHATSAPP
+
+--- 8a. API service ---
+
+  nano apps/api/.env
+
+Paste the following (fill in YOUR values for DATABASE_URL and REDIS_URL):
+
+  DATABASE_URL="postgresql://postgres.dhbmbscmsazbmsdrcpma:by4NRaGBtstlqmvU@aws-1-eu-west-3.pooler.supabase.com:6543/postgres?sslmode=require&pgbouncer=true"
+  REDIS_URL="rediss://default:gQAAAAAAAdkjAAIgcDE2NjcwNTQ4MWE0NmQ0NGIxYWY3YjYwMGUxNDJlYTlkMA@creative-teal-121123.upstash.io:6379"
+  JWT_SECRET="change-this-to-a-random-64-character-string"
+  ENCRYPTION_KEY="change-this-to-a-random-32-char-hex"
+  WEBHOOK_VERIFY_TOKEN="dEecTARRJTq7EcVPOlKRP2RvlDQL8UCzkpeWJz1fcPx82g0P0OKP5ELbaHtE24G7"
+  WEBHOOK_BASE_URL="https://webhook.whatsapi.buzz"
+  WEBHOOK_CALLBACK_URL="https://webhook.whatsapi.buzz/webhook"
+  FRONTEND_URL="https://whatsapi.buzz"
+  PORT=4000
+
+Save: Ctrl+O, Enter, Ctrl+X
+
+--- 8b. Webhook receiver ---
+
+  nano apps/webhook/.env
+
+Paste:
+
+  DATABASE_URL="postgresql://postgres.dhbmbscmsazbmsdrcpma:by4NRaGBtstlqmvU@aws-1-eu-west-3.pooler.supabase.com:6543/postgres?sslmode=require&pgbouncer=true"
+  REDIS_URL="rediss://default:gQAAAAAAAdkjAAIgcDE2NjcwNTQ4MWE0NmQ0NGIxYWY3YjYwMGUxNDJlYTlkMA@creative-teal-121123.upstash.io:6379"
+  WEBHOOK_VERIFY_TOKEN="dEecTARRJTq7EcVPOlKRP2RvlDQL8UCzkpeWJz1fcPx82g0P0OKP5ELbaHtE24G7"
+  PORT=4001
+
+Save: Ctrl+O, Enter, Ctrl+X
+
+--- 8c. Web frontend ---
+
+  nano apps/web/.env.local
+
+Paste:
+
+  NEXTAUTH_SECRET="zeoX16wMKjXRbyyehLYzDf9R0828XVTCKm7GvUlwJohs0DlEL4JCSkk08ABdYwAo"
+  NEXTAUTH_URL="https://whatsapi.buzz"
+  NEXT_PUBLIC_API_URL="https://api.whatsapi.buzz"
+
+Save: Ctrl+O, Enter, Ctrl+X
+
+
+---------------------------------------------------------------
+STEP 9 — INSTALL DEPENDENCIES, MIGRATE DB, BUILD
+---------------------------------------------------------------
+
+  cd /home/silent/whatsapp-saas/WHATSAPP
+
+  pnpm install
+
+  # Build the database package first (required for runtime module resolution)
+  pnpm --filter @whatsapp-saas/database build
+
+  pnpm --filter @whatsapp-saas/database exec prisma db push
+  # This creates all tables including:
+  #   subscriptions, wa_account_access, wa_credentials (multi-account)
+
+  pnpm --filter @whatsapp-saas/database exec prisma db seed
+  # Optional — only if a seed file exists
+
+  pnpm build
+  # Builds all three apps: api, webhook-receiver, web
+
+
+---------------------------------------------------------------
+STEP 10 — START SERVICES WITH PM2
+---------------------------------------------------------------
+
+  cd /home/silent/whatsapp-saas/WHATSAPP
+
+  nano ecosystem.config.js
+
+Paste:
+
+  module.exports = {
+    apps: [
+      {
+        name: "wa-api",
+        cwd: "/home/silent/whatsapp-saas/WHATSAPP/apps/api",
+        script: "dist/apps/api/src/index.js",
+        env: { NODE_ENV: "production" }
+      },
+      {
+        name: "wa-webhook",
+        cwd: "/home/silent/whatsapp-saas/WHATSAPP/apps/webhook",
+        script: "dist/apps/webhook/src/index.js",
+        env: { NODE_ENV: "production" }
+      },
+      {
+        name: "wa-web",
+        cwd: "/home/silent/whatsapp-saas/WHATSAPP/apps/web",
+        script: "node_modules/next/dist/bin/next",
+        args: "start",
+        env: { NODE_ENV: "production", PORT: 3000 }
+      }
+    ]
+  }
+
+Save: Ctrl+O, Enter, Ctrl+X
+
+Then start everything:
+
+  pm2 start ecosystem.config.js
+  pm2 save
+  pm2 startup
+  # Copy and run the command it prints — enables auto-start on reboot
+
+Check all 3 are running:
+
+  pm2 status
+
+
+---------------------------------------------------------------
+STEP 11 — CONFIGURE NGINX REVERSE PROXY
+---------------------------------------------------------------
+
+  sudo apt install nginx -y
+
+  sudo nano /etc/nginx/sites-available/whatsapi
+
+Paste the entire block below:
+
+  server {
+      server_name whatsapi.buzz www.whatsapi.buzz;
+      location / {
+          proxy_pass http://localhost:3000;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection 'upgrade';
+          proxy_set_header Host $host;
+          proxy_cache_bypass $http_upgrade;
+      }
+  }
+
+  server {
+      server_name api.whatsapi.buzz;
+      location / {
+          proxy_pass http://localhost:4000;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      }
+  }
+
+  server {
+      server_name webhook.whatsapi.buzz;
+      location / {
+          proxy_pass http://localhost:4001;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      }
+  }
+
+Save: Ctrl+O, Enter, Ctrl+X
+
+Enable the config:
+
+  sudo ln -s /etc/nginx/sites-available/whatsapi /etc/nginx/sites-enabled/
+  sudo nginx -t
+  # Should say: configuration file test is successful
+  sudo systemctl reload nginx
+
+Open firewall ports:
+
+  sudo ufw allow 80/tcp
+  sudo ufw allow 443/tcp
+  sudo ufw allow OpenSSH
+  sudo ufw enable
+
+
+---------------------------------------------------------------
+STEP 12 — SSL CERTIFICATES WITH CERTBOT
+---------------------------------------------------------------
+
+  sudo apt install certbot python3-certbot-nginx -y
+
+  sudo certbot --nginx \
+    -d whatsapi.buzz \
+    -d www.whatsapi.buzz \
+    -d api.whatsapi.buzz \
+    -d webhook.whatsapi.buzz
+
+  # Follow prompts — enter your email, agree to terms
+  # Certbot will auto-edit nginx config with SSL settings
+
+Auto-renewal test:
+
+  sudo certbot renew --dry-run
+
+
+---------------------------------------------------------------
+STEP 13 — FINAL VERIFICATION
+---------------------------------------------------------------
+
+  pm2 status
+  # All 3 apps: wa-api, wa-webhook, wa-web should show "online"
+
+  curl https://api.whatsapi.buzz/health
+  # Expected: {"ok":true}
+
+  curl -I https://whatsapi.buzz
+  # Expected: HTTP/2 200
+
+Visit in your browser:
+  https://whatsapi.buzz            → Homepage
+  https://whatsapi.buzz/login      → Login page
+  https://whatsapi.buzz/pricing    → Pricing page
+  https://api.whatsapi.buzz/health → API health check
+
+
+---------------------------------------------------------------
+DNS RECORDS REMINDER (set in your domain registrar)
+---------------------------------------------------------------
+
+  Type  Name       Value
+  ----  ---------  ----------------
+  A     @          173.208.251.202
+  A     www        173.208.251.202
+  A     api        173.208.251.202
+  A     webhook    173.208.251.202
+
+
+---------------------------------------------------------------
+USEFUL COMMANDS AFTER DEPLOYMENT
+---------------------------------------------------------------
+
+  pm2 status                  — check all services
+  pm2 logs wa-api             — API logs
+  pm2 logs wa-webhook         — Webhook receiver logs
+  pm2 logs wa-web             — Frontend logs
+  pm2 restart wa-api          — Restart a specific service
+  pm2 restart all             — Restart everything
+
+  sudo systemctl status nginx — Nginx status
+  sudo nginx -t               — Test nginx config
+  sudo systemctl reload nginx — Reload nginx after changes
+
+  cd /home/silent/whatsapp-saas/WHATSAPP
+  git pull                    — Pull latest code changes
+  pnpm build                  — Rebuild after code changes
+  pm2 restart all             — Apply new build
+
+
+---------------------------------------------------------------
+META WEBHOOK CONFIGURATION (after deployment)
+---------------------------------------------------------------
+
+In your Meta Developer Portal (developers.facebook.com):
+  Callback URL   : https://webhook.whatsapi.buzz/webhook
+  Verify Token   : my-secret-verify-token-123
+                   (must match WEBHOOK_VERIFY_TOKEN in .env)
+
+Subscribe to all 11 fields:
+  messages, message_template_status_update,
+  account_alerts, account_review_update,
+  account_update, business_capability_update,
+  message_template_components_update,
+  message_template_quality_update,
+  phone_number_name_update,
+  phone_number_quality_update,
+  security
+
+===============================================================
+END OF GUIDE
+===============================================================
