@@ -104,12 +104,21 @@ accountsRouter.post("/import", async (req, res, next) => {
       });
     }
 
-    // ── Encrypt & save ─────────────────────────
+    // ── Encrypt & save (upsert so re-importing preserves history) ────
     const appSecretEnc = encrypt(body.appSecret);
     const accessTokenEnc = encrypt(body.accessToken);
 
-    const credential = await prisma.waCredential.create({
-      data: {
+    const credential = await prisma.waCredential.upsert({
+      where: { businessId_phoneNumberId: { businessId, phoneNumberId: body.phoneNumberId } },
+      update: {
+        name: body.name,
+        appId: body.appId,
+        appSecretEnc,
+        accessTokenEnc,
+        wabaId: body.wabaId,
+        lastVerifiedAt: new Date(),
+      },
+      create: {
         businessId,
         name: body.name,
         appId: body.appId,
@@ -121,13 +130,15 @@ accountsRouter.post("/import", async (req, res, next) => {
       },
     });
 
-    // ── Give owner access to this account ─────
+    // ── Give owner access to this account (skip if already exists) ─
     const ownerMember = await prisma.businessMember.findFirst({
       where: { businessId, role: "OWNER" },
     });
     if (ownerMember) {
-      await prisma.waAccountAccess.create({
-        data: { businessMemberId: ownerMember.id, waCredentialId: credential.id },
+      await prisma.waAccountAccess.upsert({
+        where: { businessMemberId_waCredentialId: { businessMemberId: ownerMember.id, waCredentialId: credential.id } },
+        update: {},
+        create: { businessMemberId: ownerMember.id, waCredentialId: credential.id },
       });
     }
 
