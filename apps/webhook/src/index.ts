@@ -3,7 +3,6 @@ import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
 import type { WhatsAppWebhookPayload } from "@whatsapp-saas/types";
-import { webhookQueue, startWorker } from "./lib/queue";
 import { dispatchWebhookPayload } from "./handlers";
 
 const app = express();
@@ -17,8 +16,6 @@ if (!VERIFY_TOKEN) {
 
 app.use(helmet());
 app.use(morgan("dev"));
-
-// IMPORTANT: Raw body needed before express.json() for signature verification
 app.use(express.json());
 
 // ── Health check ───────────────────────────────
@@ -44,7 +41,7 @@ app.get("/webhook", (req, res) => {
 });
 
 // ── POST /webhook — receive events from Meta ───
-app.post("/webhook", async (req, res) => {
+app.post("/webhook", (req, res) => {
   // Always respond 200 immediately — Meta will retry if it doesn't get a fast response
   res.status(200).send("EVENT_RECEIVED");
 
@@ -57,23 +54,18 @@ app.post("/webhook", async (req, res) => {
 
   console.log(`[webhook] Received payload: object=${payload.object}, entries=${payload.entry?.length ?? 0}`);
 
-  try {
-    await dispatchWebhookPayload(payload, async (jobData) => {
-      await webhookQueue.add(jobData.field, jobData, {
-        jobId: `${jobData.wabaId}-${jobData.field}-${Date.now()}`,
-      });
-    });
-  } catch (err) {
-    console.error("[webhook] Failed to dispatch payload:", err);
-  }
+  // Process directly — no queue needed
+  dispatchWebhookPayload(payload).catch((err) => {
+    console.error("[webhook] Failed to process payload:", err);
+  });
 });
 
-// ── Start server + worker ──────────────────────
+// ── Start server ───────────────────────────────
 app.listen(PORT, () => {
   console.log(`🪝  Webhook receiver running on http://localhost:${PORT}`);
   console.log(`📋 Verify URL: http://localhost:${PORT}/webhook`);
   console.log(`🔑 Verify token: ${VERIFY_TOKEN}`);
-  startWorker();
+  console.log(`✅ Direct processing mode (no Redis queue)`);
 });
 
 export default app;
