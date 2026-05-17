@@ -62,7 +62,7 @@ bulkSendRouter.post("/send", async (req, res, next) => {
     });
 
     const accessToken = decrypt(cred.accessTokenEnc);
-    processBulkJob(job.id, template, body.recipients, accessToken, cred.phoneNumberId, businessId).catch(console.error);
+    processBulkJob(job.id, template, body.recipients as { phone: string; params?: string[] }[], accessToken, cred.phoneNumberId, businessId).catch(console.error);
 
     return res.status(202).json({ success: true, data: { jobId: job.id }, message: `Bulk send started for ${body.recipients.length} recipients` });
   } catch (err) { next(err); }
