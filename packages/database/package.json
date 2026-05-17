@@ -22,5 +22,8 @@
   },
   "exports": {
     ".": "./dist/index.js"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   }
 }
