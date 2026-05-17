@@ -43,9 +43,13 @@ export default function ChatPage() {
   const { data: accountsData } = useSWR("/api/accounts", fetcher, { refreshInterval: 30000 });
   const accounts: WaCred[] = accountsData?.data ?? [];
 
-  // Auto-select first account
+  // Auto-select first account + backfill conversations from existing messages
   useEffect(() => {
-    if (accounts.length > 0 && !selectedCredId) setSelectedCredId(accounts[0].id);
+    if (accounts.length > 0 && !selectedCredId) {
+      setSelectedCredId(accounts[0].id);
+      // Run backfill once to link old messages to conversations
+      api.post("/api/conversations/backfill").catch(() => {});
+    }
   }, [accounts, selectedCredId]);
 
   // Load conversations — refresh every 5s

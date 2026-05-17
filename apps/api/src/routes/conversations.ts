@@ -93,6 +93,59 @@ conversationsRouter.get("/:id/messages", async (req, res, next) => {
   }
 });
 
+// POST /api/conversations/backfill — create conversations from existing messages
+conversationsRouter.post("/backfill", async (req, res, next) => {
+  try {
+    const businessId = req.user!.businessId!;
+
+    // Get all credentials for this business
+    const creds = await prisma.waCredential.findMany({ where: { businessId } });
+    const credsByPhoneNumberId = Object.fromEntries(creds.map((c) => [c.phoneNumberId, c]));
+
+    // Find all inbound messages that have no conversationId
+    const orphanMessages = await prisma.message.findMany({
+      where: { businessId, conversationId: null, direction: "INBOUND" },
+      orderBy: { timestamp: "asc" },
+    });
+
+    let created = 0;
+    let linked = 0;
+
+    for (const msg of orphanMessages) {
+      // Find the credential this message belongs to (toPhone = phoneNumberId for inbound)
+      const cred = credsByPhoneNumberId[msg.toPhone] ?? creds.find(c => c.phoneNumberId === msg.toPhone);
+      if (!cred) continue;
+
+      // Upsert conversation
+      const conv = await prisma.conversation.upsert({
+        where: { waCredentialId_contactPhone: { waCredentialId: cred.id, contactPhone: msg.fromPhone } },
+        update: { lastMessageAt: msg.timestamp, unreadCount: { increment: 1 } },
+        create: {
+          businessId, waCredentialId: cred.id,
+          contactPhone: msg.fromPhone,
+          lastMessageAt: msg.timestamp,
+          unreadCount: 1,
+        },
+      });
+
+      if (!conv.id) continue;
+
+      // Link message to conversation
+      await prisma.message.update({
+        where: { id: msg.id },
+        data: { conversationId: conv.id },
+      });
+
+      linked++;
+      if (conv.unreadCount === 1) created++;
+    }
+
+    return res.json({ success: true, message: `Backfill complete: ${created} conversations created, ${linked} messages linked` });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/conversations/:id/reply
 conversationsRouter.post("/:id/reply", async (req, res, next) => {
   try {

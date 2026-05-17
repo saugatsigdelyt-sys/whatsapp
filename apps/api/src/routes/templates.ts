@@ -17,6 +17,7 @@ templatesRouter.get("/", async (req, res, next) => {
     const templates = await prisma.messageTemplate.findMany({
       where: { businessId, ...(credentialId ? { waCredentialId: credentialId } : {}) },
       orderBy: { createdAt: "desc" },
+      include: { waCredential: { select: { name: true, displayPhone: true } } },
     });
     return res.json({ success: true, data: templates });
   } catch (err) { next(err); }

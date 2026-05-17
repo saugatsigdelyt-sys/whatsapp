@@ -9,9 +9,11 @@ function fetcher(url: string) { return api.get(url).then((r) => r.data); }
 
 interface WaCred { id: string; name: string; displayPhone: string | null; }
 interface Template { id: string; name: string; language: string; category: string; status: string; components: any[]; }
+interface ErrorEntry { phone: string; error: string; }
 interface Job {
   id: string; status: string; totalCount: number; sentCount: number; failedCount: number;
   createdAt: string; completedAt: string | null;
+  errorLog: ErrorEntry[] | null;
   template: { name: string; status: string } | null;
   waCredential: { name: string };
 }
@@ -23,6 +25,51 @@ const STATUS_COLORS: Record<string, string> = {
 
 function parseCSV(text: string): string[] {
   return text.split(/[\r\n]+/).map((l) => l.split(",")[0].trim().replace(/\D/g, "")).filter((p) => p.length >= 7);
+}
+
+function JobRow({ job }: { job: Job }) {
+  const [showErrors, setShowErrors] = useState(false);
+  const errors: ErrorEntry[] = Array.isArray(job.errorLog) ? job.errorLog : [];
+
+  return (
+    <div>
+      <div className="px-5 py-3 flex items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-gray-800 truncate">{job.template?.name ?? "—"}</div>
+          <div className="text-xs text-gray-400">{job.waCredential.name} · {new Date(job.createdAt).toLocaleString()}</div>
+        </div>
+        <div className="text-xs text-gray-500 text-right shrink-0">
+          <div className="text-green-600 font-medium">{job.sentCount}/{job.totalCount} sent</div>
+          {job.failedCount > 0 && (
+            <button
+              onClick={() => setShowErrors((v) => !v)}
+              className="text-red-500 hover:underline font-medium"
+            >
+              {job.failedCount} failed {showErrors ? "▲" : "▼"}
+            </button>
+          )}
+        </div>
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[job.status] ?? "bg-gray-100 text-gray-600"}`}>
+          {job.status === "RUNNING"
+            ? <span className="flex items-center gap-1"><Clock size={10} className="animate-spin" /> Running</span>
+            : job.status}
+        </span>
+      </div>
+      {showErrors && errors.length > 0 && (
+        <div className="mx-5 mb-3 bg-red-50 border border-red-200 rounded-lg overflow-hidden">
+          <div className="px-3 py-2 bg-red-100 text-xs font-semibold text-red-700">Failed recipients</div>
+          <div className="max-h-48 overflow-y-auto divide-y divide-red-100">
+            {errors.map((e, i) => (
+              <div key={i} className="px-3 py-2 flex items-start gap-3">
+                <span className="text-xs font-mono text-red-800 shrink-0">+{e.phone}</span>
+                <span className="text-xs text-red-600">{e.error}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function BulkSendPage() {
@@ -232,19 +279,7 @@ export default function BulkSendPage() {
           </div>
           <div className="divide-y divide-gray-100">
             {jobs.map((job) => (
-              <div key={job.id} className="px-5 py-3 flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-800 truncate">{job.template?.name ?? "—"}</div>
-                  <div className="text-xs text-gray-400">{job.waCredential.name} · {new Date(job.createdAt).toLocaleString()}</div>
-                </div>
-                <div className="text-xs text-gray-500 text-right shrink-0">
-                  <div>{job.sentCount}/{job.totalCount} sent</div>
-                  {job.failedCount > 0 && <div className="text-red-500">{job.failedCount} failed</div>}
-                </div>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[job.status] ?? "bg-gray-100 text-gray-600"}`}>
-                  {job.status === "RUNNING" ? <span className="flex items-center gap-1"><Clock size={10} className="animate-spin" /> Running</span> : job.status}
-                </span>
-              </div>
+              <JobRow key={job.id} job={job} />
             ))}
           </div>
         </div>
