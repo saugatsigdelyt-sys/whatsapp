@@ -36,3 +36,10 @@ export function requireBusiness(req: Request, res: Response, next: NextFunction)
   }
   next();
 }
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.role !== "SUPER_ADMIN") {
+    return res.status(403).json({ success: false, error: "Admin access required" });
+  }
+  next();
+}

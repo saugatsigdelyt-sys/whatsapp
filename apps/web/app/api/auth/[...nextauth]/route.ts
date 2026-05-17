@@ -31,6 +31,8 @@ const handler = NextAuth({
               accessToken: data.data.token,
               businessId: data.data.business?.id,
               businessName: data.data.business?.name,
+              userRole: data.data.user.role,
+              userEmail: data.data.user.email,
             };
           }
           return null;
@@ -46,6 +48,8 @@ const handler = NextAuth({
         token.accessToken = (user as any).accessToken;
         token.businessId = (user as any).businessId;
         token.businessName = (user as any).businessName;
+        token.userRole = (user as any).userRole;
+        token.userEmail = (user as any).userEmail;
       }
       return token;
     },
@@ -53,6 +57,8 @@ const handler = NextAuth({
       session.accessToken = token.accessToken as string;
       session.businessId = token.businessId as string;
       session.businessName = token.businessName as string;
+      session.userRole = token.userRole as string;
+      session.userEmail = token.userEmail as string;
       return session;
     },
   },

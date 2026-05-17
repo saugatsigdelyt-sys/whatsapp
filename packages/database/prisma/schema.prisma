@@ -52,18 +52,23 @@ model Business {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  balance   Float    @default(0)
+  planExpiresAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  members       BusinessMember[]
-  credentials   WaCredential[]
-  subscription  Subscription?
-  messages      Message[]
-  webhookSubs   WebhookSubscription[]
-  events        AccountEvent[]
-  phoneNumbers  PhoneNumber[]
-  conversations Conversation[]
-  templates     MessageTemplate[]
-  bulkJobs      BulkSendJob[]
+  members          BusinessMember[]
+  credentials      WaCredential[]
+  subscription     Subscription?
+  messages         Message[]
+  webhookSubs      WebhookSubscription[]
+  events           AccountEvent[]
+  phoneNumbers     PhoneNumber[]
+  conversations    Conversation[]
+  templates        MessageTemplate[]
+  bulkJobs         BulkSendJob[]
+  balanceTxs       BalanceTransaction[]
+  oxapayAddresses  OxapayAddress[]
+  platformPhones   PlatformPhoneAssignment[]
   @@map("businesses")
 }
 
@@ -84,6 +89,8 @@ enum BusinessMemberRole {
   OWNER
   ADMIN
   VIEWER
+  MANAGER
+  SUPPORT
 }
 
 model WaCredential {
@@ -299,4 +306,90 @@ enum WebhookEventField {
   PHONE_NUMBER_QUALITY_UPDATE
   SECURITY
   TEMPLATE_CATEGORY_UPDATE
+}
+
+// ── Payment & Admin Models ─────────────────────────────────────────────
+
+enum BalanceTxType {
+  DEPOSIT
+  PLAN_PURCHASE
+  ADMIN_CREDIT
+  ADMIN_DEBIT
+  REFUND
+}
+
+model BalanceTransaction {
+  id          String         @id @default(cuid())
+  businessId  String
+  business    Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type        BalanceTxType
+  amount      Float
+  balanceAfter Float
+  description String?
+  oxapayTrackId String?
+  createdAt   DateTime       @default(now())
+  @@index([businessId, createdAt(sort: Desc)])
+  @@map("balance_transactions")
+}
+
+model OxapayAddress {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  network     String
+  address     String
+  callbackUrl String?
+  createdAt   DateTime @default(now())
+  @@unique([businessId, network])
+  @@map("oxapay_addresses")
+}
+
+model PlatformPhone {
+  id             String   @id @default(cuid())
+  name           String
+  appId          String
+  appSecretEnc   String
+  accessTokenEnc String
+  wabaId         String
+  phoneNumberId  String   @unique
+  displayPhone   String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  assignments    PlatformPhoneAssignment[]
+  @@map("platform_phones")
+}
+
+model PlatformPhoneAssignment {
+  id              String        @id @default(cuid())
+  platformPhoneId String
+  businessId      String
+  assignedAt      DateTime      @default(now())
+  platformPhone PlatformPhone @relation(fields: [platformPhoneId], references: [id], onDelete: Cascade)
+  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  @@unique([platformPhoneId, businessId])
+  @@map("platform_phone_assignments")
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  type      String   @default("info")
+  active    Boolean  @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@map("announcements")
+}
+
+model PlatformSettings {
+  id    String @id @default("singleton")
+  priceStandard Float @default(20)
+  pricePremium  Float @default(50)
+  pricePlatinum Float @default(100)
+  minDeposit    Float @default(5)
+  updatedAt DateTime @updatedAt
+  @@map("platform_settings")
 }

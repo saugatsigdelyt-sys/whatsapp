@@ -6,6 +6,8 @@ declare module "next-auth" {
     accessToken: string;
     businessId: string;
     businessName: string;
+    userRole: string;
+    userEmail: string;
   }
 }
 
@@ -14,5 +16,7 @@ declare module "next-auth/jwt" {
     accessToken?: string;
     businessId?: string;
     businessName?: string;
+    userRole?: string;
+    userEmail?: string;
   }
 }

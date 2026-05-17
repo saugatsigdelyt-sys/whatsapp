@@ -14,6 +14,8 @@ import { subscriptionsRouter } from "./routes/subscriptions";
 import { conversationsRouter } from "./routes/conversations";
 import { templatesRouter } from "./routes/templates";
 import { bulkSendRouter } from "./routes/bulk-send";
+import { paymentsRouter } from "./routes/payments";
+import { adminRouter, publicAnnouncementRouter } from "./routes/admin";
 import { errorHandler } from "./middleware/error";
 
 const app = express();
@@ -41,6 +43,9 @@ app.use("/api/subscription", subscriptionsRouter);
 app.use("/api/conversations", conversationsRouter);
 app.use("/api/templates", templatesRouter);
 app.use("/api/bulk-send", bulkSendRouter);
+app.use("/api/payments", paymentsRouter);
+app.use("/api/admin", adminRouter);
+app.use("/api/announcements", publicAnnouncementRouter);
 
 app.use((_req, res) => res.status(404).json({ success: false, error: "Route not found" }));
 app.use(errorHandler);

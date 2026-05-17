@@ -1,0 +1,561 @@
+"use client";
+
+import { useState } from "react";
+import useSWR from "swr";
+import api from "@/lib/api";
+import {
+  Users, Phone, Megaphone, Settings, DollarSign,
+  Search, ChevronRight, Loader2, Plus, Trash2, Edit2,
+  CheckCircle, XCircle, ArrowUpDown,
+} from "lucide-react";
+
+// ── Tab definitions ────────────────────────────────────────────────────────
+type Tab = "users" | "phones" | "announcements" | "settings";
+
+// ── Users Tab ──────────────────────────────────────────────────────────────
+function UsersTab() {
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [editBalance, setEditBalance] = useState<{ id: string; name: string } | null>(null);
+  const [balanceAmount, setBalanceAmount] = useState("");
+  const [balanceDesc, setBalanceDesc] = useState("");
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [planLoading, setPlanLoading] = useState<string>("");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const { data, mutate } = useSWR(
+    `/api/admin/users?search=${search}&page=${page}&limit=20`,
+    (url: string) => api.get(url).then((r) => r.data)
+  );
+
+  const users = data?.data ?? [];
+  const total = data?.total ?? 0;
+
+  async function handlePlanChange(businessId: string, tier: string) {
+    setPlanLoading(businessId + tier);
+    setMsg(null);
+    try {
+      await api.patch(`/api/admin/users/${businessId}/plan`, { tier });
+      setMsg(`Plan updated to ${tier}`);
+      mutate();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error ?? "Failed");
+    } finally {
+      setPlanLoading("");
+    }
+  }
+
+  async function handleBalanceSave() {
+    if (!editBalance || !balanceAmount) return;
+    const amount = parseFloat(balanceAmount);
+    if (isNaN(amount)) return;
+    setBalanceLoading(true);
+    try {
+      await api.patch(`/api/admin/users/${editBalance.id}/balance`, { amount, description: balanceDesc || undefined });
+      setMsg(`Balance updated for ${editBalance.name}`);
+      setEditBalance(null);
+      setBalanceAmount("");
+      setBalanceDesc("");
+      mutate();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error ?? "Failed");
+    } finally {
+      setBalanceLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {msg && (
+        <div className="bg-blue-50 text-blue-700 border border-blue-200 rounded-lg px-4 py-2 text-sm">{msg}</div>
+      )}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search users by email or name…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none"
+          />
+        </div>
+        <span className="text-sm text-gray-500">{total} users</span>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Business</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Plan</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {users.map((u: any) => (
+              <tr key={u.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3">
+                  <div className="font-medium text-gray-900">{u.name ?? "—"}</div>
+                  <div className="text-gray-400 text-xs">{u.email}</div>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="text-gray-700">{u.business?.name ?? "—"}</div>
+                </td>
+                <td className="px-4 py-3">
+                  <select
+                    value={u.business?.tier ?? "FREE"}
+                    disabled={!u.business || !!planLoading}
+                    onChange={(e) => handlePlanChange(u.business?.id, e.target.value)}
+                    className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
+                  >
+                    {["FREE", "STANDARD", "PREMIUM", "PLATINUM"].map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="font-semibold text-gray-800">${(u.business?.balance ?? 0).toFixed(2)}</span>
+                </td>
+                <td className="px-4 py-3">
+                  {u.business && (
+                    <button
+                      onClick={() => { setEditBalance({ id: u.business.id, name: u.name ?? u.email }); setMsg(null); }}
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium"
+                    >
+                      <DollarSign size={12} /> Edit Balance
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {users.length === 0 && (
+          <div className="px-4 py-10 text-center text-gray-400 text-sm">No users found</div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between">
+        <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="text-sm px-3 py-1 rounded border disabled:opacity-40">Prev</button>
+        <span className="text-sm text-gray-500">Page {page}</span>
+        <button disabled={users.length < 20} onClick={() => setPage(p => p + 1)} className="text-sm px-3 py-1 rounded border disabled:opacity-40">Next</button>
+      </div>
+
+      {/* Balance Edit Modal */}
+      {editBalance && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="font-bold text-gray-900 mb-1">Edit Balance</h3>
+            <p className="text-sm text-gray-500 mb-4">Adjust balance for {editBalance.name}</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Amount (positive = credit, negative = debit)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={balanceAmount}
+                  onChange={(e) => setBalanceAmount(e.target.value)}
+                  placeholder="e.g. 50 or -10"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Description (optional)</label>
+                <input
+                  type="text"
+                  value={balanceDesc}
+                  onChange={(e) => setBalanceDesc(e.target.value)}
+                  placeholder="e.g. Manual credit"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setEditBalance(null)} className="px-4 py-2 text-sm rounded-lg border text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={handleBalanceSave}
+                disabled={balanceLoading || !balanceAmount}
+                className="px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {balanceLoading && <Loader2 size={14} className="animate-spin" />}
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Platform Phones Tab ────────────────────────────────────────────────────
+function PhonesTab() {
+  const { data, mutate } = useSWR("/api/admin/platform-phones", (url: string) => api.get(url).then((r) => r.data));
+  const { data: usersData } = useSWR("/api/admin/users?limit=100", (url: string) => api.get(url).then((r) => r.data));
+  const phones = data?.data ?? [];
+  const users = usersData?.data ?? [];
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ name: "", appId: "", appSecret: "", accessToken: "", wabaId: "", phoneNumberId: "", displayPhone: "", notes: "" });
+  const [loading, setLoading] = useState(false);
+  const [assignLoading, setAssignLoading] = useState<string>("");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function handleAdd() {
+    setLoading(true);
+    setMsg(null);
+    try {
+      await api.post("/api/admin/platform-phones", form);
+      setMsg("Phone added");
+      setShowAdd(false);
+      setForm({ name: "", appId: "", appSecret: "", accessToken: "", wabaId: "", phoneNumberId: "", displayPhone: "", notes: "" });
+      mutate();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error ?? "Failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAssign(phoneId: string, businessId: string) {
+    setAssignLoading(phoneId + businessId);
+    try {
+      await api.post(`/api/admin/platform-phones/${phoneId}/assign`, { businessId });
+      setMsg("Assigned");
+      mutate();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error ?? "Failed");
+    } finally {
+      setAssignLoading("");
+    }
+  }
+
+  async function handleDelete(phoneId: string) {
+    if (!confirm("Delete this platform phone?")) return;
+    await api.delete(`/api/admin/platform-phones/${phoneId}`);
+    mutate();
+  }
+
+  return (
+    <div className="space-y-4">
+      {msg && <div className="bg-blue-50 text-blue-700 border border-blue-200 rounded-lg px-4 py-2 text-sm">{msg}</div>}
+      <div className="flex justify-between items-center">
+        <p className="text-sm text-gray-500">{phones.length} platform phones</p>
+        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors">
+          <Plus size={16} /> Import Phone
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {phones.map((p: any) => (
+          <div key={p.id} className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="font-medium text-gray-900">{p.name}</div>
+                <div className="text-sm text-gray-500">{p.displayPhone ?? p.phoneNumberId}</div>
+                {p.notes && <div className="text-xs text-gray-400 mt-1">{p.notes}</div>}
+              </div>
+              <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-600">
+                <Trash2 size={16} />
+              </button>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-500 mb-2 font-medium">Assigned to:</p>
+              {p.assignments?.length === 0 && <p className="text-xs text-gray-400">Not assigned yet</p>}
+              <div className="flex flex-wrap gap-2">
+                {p.assignments?.map((a: any) => (
+                  <div key={a.id} className="flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0.5 text-xs">
+                    {a.business?.name}
+                    <button onClick={() => api.delete(`/api/admin/platform-phones/${p.id}/assign/${a.business?.id}`).then(() => mutate())} className="text-red-400 hover:text-red-600 ml-0.5">×</button>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <select
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs flex-1"
+                  defaultValue=""
+                  onChange={(e) => { if (e.target.value) handleAssign(p.id, e.target.value); e.target.value = ""; }}
+                >
+                  <option value="">Assign to business…</option>
+                  {users.filter((u: any) => u.business && !p.assignments?.find((a: any) => a.business?.id === u.business?.id)).map((u: any) => (
+                    <option key={u.business?.id} value={u.business?.id}>{u.business?.name} ({u.email})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Add Phone Modal */}
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h3 className="font-bold text-gray-900 mb-4">Import Platform Phone</h3>
+            <div className="space-y-3">
+              {[
+                { key: "name", label: "Name", placeholder: "e.g. Support Line 1" },
+                { key: "appId", label: "App ID", placeholder: "Meta App ID" },
+                { key: "appSecret", label: "App Secret", placeholder: "••••••" },
+                { key: "accessToken", label: "Access Token", placeholder: "EAAxxxxxxx" },
+                { key: "wabaId", label: "WABA ID", placeholder: "WhatsApp Business Account ID" },
+                { key: "phoneNumberId", label: "Phone Number ID", placeholder: "Meta phone number ID" },
+                { key: "displayPhone", label: "Display Phone (optional)", placeholder: "+1 555 000 0000" },
+                { key: "notes", label: "Notes (optional)", placeholder: "Internal notes" },
+              ].map(({ key, label, placeholder }) => (
+                <div key={key}>
+                  <label className="text-xs text-gray-500 block mb-1">{label}</label>
+                  <input
+                    type={key.includes("Secret") || key.includes("Token") ? "password" : "text"}
+                    value={(form as any)[key]}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    placeholder={placeholder}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={handleAdd}
+                disabled={loading}
+                className="px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {loading && <Loader2 size={14} className="animate-spin" />}
+                Import
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Announcements Tab ──────────────────────────────────────────────────────
+function AnnouncementsTab() {
+  const { data, mutate } = useSWR("/api/admin/announcements", (url: string) => api.get(url).then((r) => r.data));
+  const announcements = data?.data ?? [];
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ title: "", body: "", type: "info", active: true });
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const TYPE_COLORS: Record<string, string> = {
+    info: "bg-blue-50 border-blue-200 text-blue-700",
+    warning: "bg-yellow-50 border-yellow-200 text-yellow-700",
+    success: "bg-green-50 border-green-200 text-green-700",
+    error: "bg-red-50 border-red-200 text-red-700",
+  };
+
+  async function handleCreate() {
+    setLoading(true);
+    try {
+      await api.post("/api/admin/announcements", form);
+      setMsg("Announcement created");
+      setShowAdd(false);
+      setForm({ title: "", body: "", type: "info", active: true });
+      mutate();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error ?? "Failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleActive(id: string, active: boolean) {
+    await api.patch(`/api/admin/announcements/${id}`, { active: !active });
+    mutate();
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this announcement?")) return;
+    await api.delete(`/api/admin/announcements/${id}`);
+    mutate();
+  }
+
+  return (
+    <div className="space-y-4">
+      {msg && <div className="bg-blue-50 text-blue-700 border border-blue-200 rounded-lg px-4 py-2 text-sm">{msg}</div>}
+      <div className="flex justify-end">
+        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors">
+          <Plus size={16} /> New Announcement
+        </button>
+      </div>
+      <div className="space-y-3">
+        {announcements.map((a: any) => (
+          <div key={a.id} className={`border rounded-xl p-4 ${TYPE_COLORS[a.type] ?? TYPE_COLORS.info}`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="font-semibold">{a.title}</div>
+                <div className="text-sm mt-1">{a.body}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-4">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${a.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                  {a.active ? "Active" : "Inactive"}
+                </span>
+                <button onClick={() => toggleActive(a.id, a.active)} className="text-gray-500 hover:text-gray-800" title={a.active ? "Deactivate" : "Activate"}>
+                  {a.active ? <XCircle size={16} /> : <CheckCircle size={16} />}
+                </button>
+                <button onClick={() => handleDelete(a.id)} className="text-red-400 hover:text-red-600">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {announcements.length === 0 && <p className="text-sm text-gray-400 text-center py-8">No announcements yet</p>}
+      </div>
+
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="font-bold text-gray-900 mb-4">New Announcement</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Title</label>
+                <input value={form.title} onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Message</label>
+                <textarea rows={3} value={form.body} onChange={(e) => setForm(f => ({ ...f, body: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none resize-none" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Type</label>
+                <select value={form.type} onChange={(e) => setForm(f => ({ ...f, type: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="success">Success</option>
+                  <option value="error">Error</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.active} onChange={(e) => setForm(f => ({ ...f, active: e.target.checked }))} />
+                Show immediately
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={handleCreate} disabled={loading || !form.title || !form.body} className="px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2">
+                {loading && <Loader2 size={14} className="animate-spin" />} Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Settings Tab ───────────────────────────────────────────────────────────
+function SettingsTab() {
+  const { data, mutate } = useSWR("/api/admin/settings", (url: string) => api.get(url).then((r) => r.data));
+  const s = data?.data;
+  const [form, setForm] = useState({ priceStandard: "", pricePremium: "", pricePlatinum: "", minDeposit: "" });
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  // Pre-fill when loaded
+  if (s && !form.priceStandard && !loading) {
+    setForm({ priceStandard: s.priceStandard, pricePremium: s.pricePremium, pricePlatinum: s.pricePlatinum, minDeposit: s.minDeposit });
+  }
+
+  async function handleSave() {
+    setLoading(true);
+    setMsg(null);
+    try {
+      await api.patch("/api/admin/settings", {
+        priceStandard: parseFloat(form.priceStandard),
+        pricePremium: parseFloat(form.pricePremium),
+        pricePlatinum: parseFloat(form.pricePlatinum),
+        minDeposit: parseFloat(form.minDeposit),
+      });
+      setMsg("Settings saved");
+      mutate();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error ?? "Failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="max-w-sm space-y-4">
+      {msg && <div className="bg-blue-50 text-blue-700 border border-blue-200 rounded-lg px-4 py-2 text-sm">{msg}</div>}
+      <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-gray-800">Plan Pricing (USD/month)</h3>
+        {[
+          { key: "priceStandard", label: "Standard" },
+          { key: "pricePremium", label: "Premium" },
+          { key: "pricePlatinum", label: "Platinum" },
+          { key: "minDeposit", label: "Minimum Deposit" },
+        ].map(({ key, label }) => (
+          <div key={key}>
+            <label className="text-xs text-gray-500 block mb-1">{label}</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={(form as any)[key]}
+                onChange={(e) => setForm(f => ({ ...f, [key]: e.target.value }))}
+                className="w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none"
+              />
+            </div>
+          </div>
+        ))}
+        <button onClick={handleSave} disabled={loading} className="w-full bg-brand-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center gap-2">
+          {loading && <Loader2 size={14} className="animate-spin" />} Save Settings
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Admin Page ────────────────────────────────────────────────────────
+export default function AdminPage() {
+  const [tab, setTab] = useState<Tab>("users");
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: "users", label: "Users & Plans", icon: <Users size={16} /> },
+    { id: "phones", label: "Platform Phones", icon: <Phone size={16} /> },
+    { id: "announcements", label: "Announcements", icon: <Megaphone size={16} /> },
+    { id: "settings", label: "Pricing Settings", icon: <Settings size={16} /> },
+  ];
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
+        <p className="text-gray-500 mt-1">Platform management — admin@whatsapi.buzz</p>
+      </div>
+
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              tab === t.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-800"
+            }`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div>
+        {tab === "users" && <UsersTab />}
+        {tab === "phones" && <PhonesTab />}
+        {tab === "announcements" && <AnnouncementsTab />}
+        {tab === "settings" && <SettingsTab />}
+      </div>
+    </div>
+  );
+}

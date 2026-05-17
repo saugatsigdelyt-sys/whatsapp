@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import useSWR from "swr";
+import { useSession } from "next-auth/react";
 import api from "@/lib/api";
 import clsx from "clsx";
 import {
   LayoutDashboard, MessageSquare, Settings, Webhook, Bell,
-  Phone, Users, MessageCircle, FileText, Send,
+  Phone, Users, MessageCircle, FileText, Send, Wallet, ShieldCheck,
 } from "lucide-react";
 
 function PlanBadge() {
@@ -49,6 +50,7 @@ const navGroups = [
       { label: "Webhooks",      href: "/dashboard/webhooks",      icon: Webhook },
       { label: "Events",        href: "/dashboard/events",        icon: Bell },
       { label: "Team",          href: "/dashboard/team",          icon: Users },
+      { label: "Billing",       href: "/dashboard/billing",       icon: Wallet },
       { label: "Settings",      href: "/dashboard/settings",      icon: Settings },
     ],
   },
@@ -56,6 +58,9 @@ const navGroups = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const isSuperAdmin = session?.userRole === "SUPER_ADMIN";
+  const isManagerEmail = session?.userEmail === "manager@whatsapi.buzz";
 
   return (
     <aside className="w-60 bg-white border-r border-gray-200 flex flex-col shrink-0">
@@ -97,11 +102,42 @@ export function Sidebar() {
             </div>
           </div>
         ))}
+        {isSuperAdmin && (
+          <div>
+            <p className="px-3 mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Platform</p>
+            <div className="space-y-0.5">
+              {!isManagerEmail && (
+                <Link
+                  href="/admin"
+                  className={clsx(
+                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    pathname.startsWith("/admin") ? "bg-red-50 text-red-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  )}
+                >
+                  <ShieldCheck size={16} className="shrink-0" />
+                  Admin Panel
+                </Link>
+              )}
+              {isManagerEmail && (
+                <Link
+                  href="/manager"
+                  className={clsx(
+                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    pathname.startsWith("/manager") ? "bg-orange-50 text-orange-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  )}
+                >
+                  <ShieldCheck size={16} className="shrink-0" />
+                  Manager Panel
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
       </nav>
 
       <div className="px-3 pb-4">
         <Link
-          href="/pricing"
+          href="/dashboard/billing"
           className="block bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl px-3 py-2.5 transition-colors"
         >
           <div className="text-xs text-gray-400 mb-0.5">Current plan</div>
