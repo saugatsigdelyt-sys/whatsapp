@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import useSWR from "swr";
-import { useSession } from "next-auth/react";
 import api from "@/lib/api";
 import clsx from "clsx";
 import {
@@ -58,9 +57,11 @@ const navGroups = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const isSuperAdmin = session?.userRole === "SUPER_ADMIN";
-  const isManagerEmail = session?.userEmail === "manager@whatsapi.buzz";
+  const { data: meData } = useSWR("/api/auth/me", (url: string) => api.get(url).then((r) => r.data));
+  const userRole: string = meData?.data?.user?.role ?? "";
+  const userEmail: string = meData?.data?.user?.email ?? "";
+  const isSuperAdmin = userRole === "SUPER_ADMIN";
+  const isManagerEmail = userEmail === "manager@whatsapi.buzz";
 
   return (
     <aside className="w-60 bg-white border-r border-gray-200 flex flex-col shrink-0">
