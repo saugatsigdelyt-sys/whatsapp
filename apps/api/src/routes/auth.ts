@@ -19,6 +19,8 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
+  captchaToken: z.string().min(1),
+  captchaAnswer: z.string().min(1),
 });
 
 function signToken(payload: object): string {
@@ -124,6 +126,12 @@ authRouter.post("/register", async (req, res, next) => {
 authRouter.post("/login", async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body);
+
+    // Verify captcha before touching the DB
+    const captchaResult = verifyCaptcha(body.captchaToken, body.captchaAnswer);
+    if (!captchaResult.valid) {
+      return res.status(400).json({ success: false, error: captchaResult.reason ?? "Invalid captcha" });
+    }
 
     const user = await prisma.user.findUnique({
       where: { email: body.email },

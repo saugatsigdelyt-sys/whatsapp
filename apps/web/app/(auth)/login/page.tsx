@@ -1,33 +1,69 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useCallback, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, RefreshCw } from "lucide-react";
+import axios from "axios";
+
+const API = process.env.NEXT_PUBLIC_API_URL;
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const justRegistered = searchParams.get("registered") === "1";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Captcha state
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaImage, setCaptchaImage] = useState("");
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+
+  const fetchCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptchaAnswer("");
+    try {
+      const r = await axios.get(`${API}/api/auth/captcha`);
+      setCaptchaToken(r.data.data.token);
+      setCaptchaImage(r.data.data.image);
+    } catch {
+      // ignore
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCaptcha();
+  }, [fetchCaptcha]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!captchaAnswer.trim()) {
+      setError("Please enter the security code");
+      return;
+    }
     setLoading(true);
     setError("");
 
     const result = await signIn("credentials", {
       email,
       password,
+      captchaToken,
+      captchaAnswer,
       redirect: false,
     });
 
     if (result?.error) {
-      setError("Invalid email or password");
+      // Could be wrong captcha or wrong credentials — refresh captcha either way
+      setError("Invalid email, password, or security code");
+      fetchCaptcha();
       setLoading(false);
     } else {
       router.push("/dashboard");
@@ -48,6 +84,7 @@ function LoginForm() {
             {error}
           </div>
         )}
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
             Email
@@ -61,6 +98,7 @@ function LoginForm() {
             placeholder="you@company.com"
           />
         </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
             Password
@@ -74,9 +112,53 @@ function LoginForm() {
             placeholder="••••••••"
           />
         </div>
+
+        {/* CAPTCHA */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Security Code</label>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-3">
+            <div className="flex items-center gap-3">
+              {captchaLoading ? (
+                <div className="w-[200px] h-[70px] bg-gray-100 rounded flex items-center justify-center">
+                  <RefreshCw size={18} className="text-gray-400 animate-spin" />
+                </div>
+              ) : captchaImage ? (
+                <img
+                  src={captchaImage}
+                  alt="Security code"
+                  width={200}
+                  height={70}
+                  className="rounded border border-gray-200 select-none"
+                  draggable={false}
+                />
+              ) : null}
+              <button
+                type="button"
+                onClick={fetchCaptcha}
+                disabled={captchaLoading}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-600 transition-colors disabled:opacity-40"
+                title="Refresh captcha"
+              >
+                <RefreshCw size={14} className={captchaLoading ? "animate-spin" : ""} />
+                New code
+              </button>
+            </div>
+            <input
+              type="text"
+              value={captchaAnswer}
+              onChange={(e) => setCaptchaAnswer(e.target.value.toUpperCase())}
+              placeholder="Type the code shown above"
+              maxLength={6}
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm tracking-widest font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !captchaImage}
           className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {loading ? "Signing in..." : "Sign in"}
@@ -108,7 +190,6 @@ export default function LoginPage() {
           <p className="text-gray-500 mt-1">Sign in to your account</p>
         </div>
 
-        {/* Form wrapped in Suspense for useSearchParams */}
         <Suspense fallback={
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
             <div className="h-48 flex items-center justify-center">

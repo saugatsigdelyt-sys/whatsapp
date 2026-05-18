@@ -9,6 +9,8 @@ const handler = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        captchaToken: { label: "Captcha Token", type: "text" },
+        captchaAnswer: { label: "Captcha Answer", type: "text" },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
@@ -19,6 +21,8 @@ const handler = NextAuth({
             {
               email: credentials.email,
               password: credentials.password,
+              captchaToken: credentials.captchaToken ?? "",
+              captchaAnswer: credentials.captchaAnswer ?? "",
             }
           );
 
