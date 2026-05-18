@@ -51,22 +51,18 @@ export async function createStaticAddress(opts: {
 
   console.log("[OxaPay] static-address response:", JSON.stringify(data));
 
-  // OxaPay result: 100 = success
-  const isSuccess = data.result === 100 || data.result === 1;
-  if (!isSuccess) {
-    throw new Error(`OxaPay static address failed (result=${data.result}): ${data.message ?? "unknown error"}`);
-  }
-
-  // Handle both nested and flat response shapes
+  // Handle both nested and flat response shapes (OxaPay returns data directly)
   const address = data.data?.address ?? data.address;
   const network = data.data?.network ?? data.network ?? opts.network;
   const currency = data.data?.currency ?? data.currency ?? "";
 
-  if (!address) {
-    throw new Error(`OxaPay static address: no address in response — ${JSON.stringify(data)}`);
+  // If we have an address, it succeeded regardless of result code
+  if (address) {
+    return { address, network, currency };
   }
 
-  return { address, network, currency };
+  // No address — something went wrong
+  throw new Error(`OxaPay static address failed: ${data.message ?? JSON.stringify(data)}`);
 }
 
 export interface InvoiceResult {
@@ -99,19 +95,14 @@ export async function createInvoice(opts: {
 
   console.log("[OxaPay] invoice response:", JSON.stringify(data));
 
-  const isSuccess = data.result === 100 || data.result === 1;
-  if (!isSuccess) {
-    throw new Error(`OxaPay invoice failed (result=${data.result}): ${data.message ?? "unknown error"}`);
-  }
-
   const trackId = data.track_id ?? data.trackId ?? data.data?.track_id ?? "";
   const payLink = data.pay_link ?? data.payLink ?? data.data?.pay_link ?? "";
 
-  if (!trackId) {
-    throw new Error(`OxaPay invoice: no track_id in response — ${JSON.stringify(data)}`);
+  if (trackId) {
+    return { trackId, payLink };
   }
 
-  return { trackId, payLink };
+  throw new Error(`OxaPay invoice failed: ${data.message ?? JSON.stringify(data)}`);
 }
 
 export function verifyOxapayHmac(rawBody: string, signature: string): boolean {
