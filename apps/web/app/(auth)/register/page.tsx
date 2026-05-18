@@ -1,20 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
+import { Lock } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    password: "",
-    businessName: "",
-  });
+  const [form, setForm] = useState({ name: "", email: "", password: "", businessName: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    axios
+      .get(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/registration-status`)
+      .then((r) => setRegistrationEnabled(r.data.data.enabled))
+      .catch(() => setRegistrationEnabled(true)); // fallback: allow
+  }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -37,6 +41,37 @@ export default function RegisterPage() {
     }
   }
 
+  // Loading state
+  if (registrationEnabled === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Registration closed
+  if (!registrationEnabled) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-full max-w-md text-center">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-10">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Lock size={28} className="text-gray-400" />
+            </div>
+            <h1 className="text-xl font-bold text-gray-900 mb-2">Registration Closed</h1>
+            <p className="text-gray-500 text-sm mb-6">
+              New account registration is not currently available. Please contact the administrator for access.
+            </p>
+            <Link href="/login" className="inline-block bg-brand-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors">
+              Back to Login
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-md">
@@ -52,15 +87,13 @@ export default function RegisterPage() {
               </div>
             )}
             {[
-              { name: "name", label: "Full Name", type: "text", placeholder: "Saugat Sigdel" },
+              { name: "name", label: "Full Name", type: "text", placeholder: "Your name" },
               { name: "email", label: "Email", type: "email", placeholder: "you@company.com" },
               { name: "password", label: "Password", type: "password", placeholder: "Min. 8 characters" },
               { name: "businessName", label: "Business Name", type: "text", placeholder: "My Company" },
             ].map((field) => (
               <div key={field.name}>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  {field.label}
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{field.label}</label>
                 <input
                   type={field.type}
                   name={field.name}
@@ -77,14 +110,12 @@ export default function RegisterPage() {
               disabled={loading}
               className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-60"
             >
-              {loading ? "Creating account..." : "Create account"}
+              {loading ? "Creating account…" : "Create account"}
             </button>
           </form>
           <p className="text-center text-sm text-gray-500 mt-6">
             Already have an account?{" "}
-            <Link href="/login" className="text-brand-600 font-medium hover:underline">
-              Sign in
-            </Link>
+            <Link href="/login" className="text-brand-600 font-medium hover:underline">Sign in</Link>
           </p>
         </div>
       </div>

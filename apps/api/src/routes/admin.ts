@@ -224,6 +224,54 @@ adminRouter.post("/platform-phones", async (req, res, next) => {
   }
 });
 
+// POST /api/admin/platform-phones/bulk — bulk import from CSV data
+adminRouter.post("/platform-phones/bulk", async (req, res, next) => {
+  try {
+    const phoneSchema = z.object({
+      name: z.string().min(1).max(80),
+      appId: z.string().min(1),
+      appSecret: z.string().min(1),
+      accessToken: z.string().min(1),
+      wabaId: z.string().min(1),
+      phoneNumberId: z.string().min(1),
+      displayPhone: z.string().optional(),
+      notes: z.string().optional(),
+    });
+    const { phones } = z.object({ phones: z.array(phoneSchema).min(1).max(500) }).parse(req.body);
+
+    const results: { success: boolean; phoneNumberId: string; error?: string }[] = [];
+    for (const p of phones) {
+      try {
+        await prisma.platformPhone.create({
+          data: {
+            name: p.name,
+            appId: p.appId,
+            appSecretEnc: encrypt(p.appSecret),
+            accessTokenEnc: encrypt(p.accessToken),
+            wabaId: p.wabaId,
+            phoneNumberId: p.phoneNumberId,
+            displayPhone: p.displayPhone,
+            notes: p.notes,
+          },
+        });
+        results.push({ success: true, phoneNumberId: p.phoneNumberId });
+      } catch (err: any) {
+        results.push({ success: false, phoneNumberId: p.phoneNumberId, error: err.message });
+      }
+    }
+
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+    return res.status(201).json({
+      success: true,
+      message: `Imported ${succeeded} phones${failed > 0 ? `, ${failed} failed` : ""}`,
+      data: results,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/admin/platform-phones/:id/assign — assign to a business
 adminRouter.post("/platform-phones/:id/assign", async (req, res, next) => {
   try {
@@ -364,6 +412,15 @@ adminRouter.patch("/settings", async (req, res, next) => {
       pricePremium: z.number().min(0).optional(),
       pricePlatinum: z.number().min(0).optional(),
       minDeposit: z.number().min(1).optional(),
+      maxWaFree: z.number().int().min(0).optional(),
+      maxWaStandard: z.number().int().min(0).optional(),
+      maxWaPremium: z.number().int().min(0).optional(),
+      maxWaPlatinum: z.number().int().min(0).optional(),
+      maxTeamFree: z.number().int().min(0).optional(),
+      maxTeamStandard: z.number().int().min(0).optional(),
+      maxTeamPremium: z.number().int().min(0).optional(),
+      maxTeamPlatinum: z.number().int().min(0).optional(),
+      registrationEnabled: z.boolean().optional(),
     }).parse(req.body);
 
     const settings = await prisma.platformSettings.upsert({

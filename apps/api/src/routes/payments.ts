@@ -157,11 +157,11 @@ paymentsRouter.post("/plan/purchase", requireAuth, requireBusiness, async (req, 
       });
     }
 
-    // Determine max WA accounts & team members by tier
+    // Determine max WA accounts & team members from dynamic settings
     const tierLimits: Record<string, { maxWaAccounts: number; maxTeamMembers: number }> = {
-      STANDARD: { maxWaAccounts: 3, maxTeamMembers: 5 },
-      PREMIUM: { maxWaAccounts: 10, maxTeamMembers: 20 },
-      PLATINUM: { maxWaAccounts: 50, maxTeamMembers: 100 },
+      STANDARD: { maxWaAccounts: settings.maxWaStandard, maxTeamMembers: settings.maxTeamStandard },
+      PREMIUM: { maxWaAccounts: settings.maxWaPremium, maxTeamMembers: settings.maxTeamPremium },
+      PLATINUM: { maxWaAccounts: settings.maxWaPlatinum, maxTeamMembers: settings.maxTeamPlatinum },
     };
     const limits = tierLimits[tier];
     const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days

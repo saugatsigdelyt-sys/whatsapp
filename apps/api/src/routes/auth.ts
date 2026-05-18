@@ -23,9 +23,29 @@ function signToken(payload: object): string {
   return jwt.sign(payload, secret, { expiresIn: "7d" });
 }
 
+// GET /api/auth/registration-status — public, no auth
+authRouter.get("/registration-status", async (_req, res, next) => {
+  try {
+    const settings = await prisma.platformSettings.findUnique({ where: { id: "singleton" } });
+    return res.json({ success: true, data: { enabled: settings?.registrationEnabled ?? true } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/auth/register
 authRouter.post("/register", async (req, res, next) => {
   try {
+    // Check if registration is enabled
+    const settings = await prisma.platformSettings.findUnique({ where: { id: "singleton" } });
+    if (settings && !settings.registrationEnabled) {
+      return res.status(403).json({
+        success: false,
+        error: "Registration is currently closed. Please contact the administrator.",
+        registrationClosed: true,
+      });
+    }
+
     const body = registerSchema.parse(req.body);
 
     const existing = await prisma.user.findUnique({ where: { email: body.email } });

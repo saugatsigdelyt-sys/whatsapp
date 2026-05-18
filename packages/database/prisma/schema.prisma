@@ -390,6 +390,18 @@ model PlatformSettings {
   pricePremium  Float @default(50)
   pricePlatinum Float @default(100)
   minDeposit    Float @default(5)
+  // Per-tier WA account limits
+  maxWaFree      Int @default(1)
+  maxWaStandard  Int @default(3)
+  maxWaPremium   Int @default(10)
+  maxWaPlatinum  Int @default(50)
+  // Per-tier team member limits
+  maxTeamFree      Int @default(1)
+  maxTeamStandard  Int @default(5)
+  maxTeamPremium   Int @default(20)
+  maxTeamPlatinum  Int @default(100)
+  // Registration control
+  registrationEnabled Boolean @default(true)
   updatedAt DateTime @updatedAt
   @@map("platform_settings")
 }
