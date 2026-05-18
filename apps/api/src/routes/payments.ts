@@ -91,12 +91,21 @@ paymentsRouter.post("/static-address", requireAuth, requireBusiness, async (req,
 
     // Create new static address
     const callbackUrl = `${CALLBACK_BASE}/api/payments/webhook`;
-    const result = await createStaticAddress({
-      network,
-      orderId: `static_${businessId}_${network}`,
-      callbackUrl,
-      description: `WhatsAPI balance top-up — business ${businessId}`,
-    });
+    let result;
+    try {
+      result = await createStaticAddress({
+        network,
+        orderId: `static_${businessId}_${network}`,
+        callbackUrl,
+        description: `WhatsAPI balance top-up — business ${businessId}`,
+      });
+    } catch (oxaErr: any) {
+      console.error("[payments/static-address] OxaPay error:", oxaErr.message);
+      return res.status(502).json({
+        success: false,
+        error: `Payment provider error: ${oxaErr.message}`,
+      });
+    }
 
     await prisma.oxapayAddress.create({
       data: {
@@ -125,7 +134,16 @@ paymentsRouter.post("/invoice", requireAuth, requireBusiness, async (req, res, n
 
     const callbackUrl = `${CALLBACK_BASE}/api/payments/webhook`;
     const orderId = `inv_${businessId}_${Date.now()}`;
-    const result = await createInvoice({ amount, orderId, callbackUrl, description: "WhatsAPI balance top-up" });
+    let result;
+    try {
+      result = await createInvoice({ amount, orderId, callbackUrl, description: "WhatsAPI balance top-up" });
+    } catch (oxaErr: any) {
+      console.error("[payments/invoice] OxaPay error:", oxaErr.message);
+      return res.status(502).json({
+        success: false,
+        error: `Payment provider error: ${oxaErr.message}`,
+      });
+    }
 
     return res.json({ success: true, data: { trackId: result.trackId, payLink: result.payLink } });
   } catch (err) {

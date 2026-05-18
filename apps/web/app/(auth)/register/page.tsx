@@ -1,24 +1,51 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
-import { Lock } from "lucide-react";
+import { Lock, RefreshCw, CheckCircle } from "lucide-react";
+
+const API = process.env.NEXT_PUBLIC_API_URL;
 
 export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState({ name: "", email: "", password: "", businessName: "" });
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaImage, setCaptchaImage] = useState("");
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
 
+  // Fetch registration status
   useEffect(() => {
     axios
-      .get(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/registration-status`)
+      .get(`${API}/api/auth/registration-status`)
       .then((r) => setRegistrationEnabled(r.data.data.enabled))
-      .catch(() => setRegistrationEnabled(true)); // fallback: allow
+      .catch(() => setRegistrationEnabled(true));
   }, []);
+
+  // Fetch captcha
+  const fetchCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptchaAnswer("");
+    try {
+      const r = await axios.get(`${API}/api/auth/captcha`);
+      setCaptchaToken(r.data.data.token);
+      setCaptchaImage(r.data.data.image);
+    } catch {
+      // ignore
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (registrationEnabled) fetchCaptcha();
+  }, [registrationEnabled, fetchCaptcha]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -26,22 +53,28 @@ export default function RegisterPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!captchaAnswer.trim()) { setError("Please enter the captcha code"); return; }
     setLoading(true);
     setError("");
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`, form);
-      router.push("/login?registered=1");
+      await axios.post(`${API}/api/auth/register`, {
+        ...form,
+        captchaToken,
+        captchaAnswer,
+      });
+      setSuccess(true);
     } catch (err: unknown) {
-      const msg = axios.isAxiosError(err)
-        ? err.response?.data?.error ?? "Registration failed"
-        : "Registration failed";
+      const axErr = axios.isAxiosError(err);
+      const msg = axErr ? err.response?.data?.error ?? "Registration failed" : "Registration failed";
       setError(msg);
+      // Always refresh captcha on error
+      fetchCaptcha();
     } finally {
       setLoading(false);
     }
   }
 
-  // Loading state
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (registrationEnabled === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -50,7 +83,7 @@ export default function RegisterPage() {
     );
   }
 
-  // Registration closed
+  // ── Registration closed ────────────────────────────────────────────────────
   if (!registrationEnabled) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -72,8 +105,34 @@ export default function RegisterPage() {
     );
   }
 
+  // ── Success ────────────────────────────────────────────────────────────────
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-full max-w-md text-center">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-10">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle size={32} className="text-green-500" />
+            </div>
+            <h1 className="text-xl font-bold text-gray-900 mb-2">Account Created!</h1>
+            <p className="text-gray-500 text-sm mb-6">
+              Your account has been created successfully. You can now sign in with your email and password.
+            </p>
+            <Link
+              href="/login"
+              className="inline-block w-full bg-brand-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors text-center"
+            >
+              Go to Login
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Registration form ──────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-10">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Create your account</h1>
@@ -86,6 +145,7 @@ export default function RegisterPage() {
                 {error}
               </div>
             )}
+
             {[
               { name: "name", label: "Full Name", type: "text", placeholder: "Your name" },
               { name: "email", label: "Email", type: "email", placeholder: "you@company.com" },
@@ -105,9 +165,53 @@ export default function RegisterPage() {
                 />
               </div>
             ))}
+
+            {/* CAPTCHA */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Security Code</label>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-3">
+                <div className="flex items-center gap-3">
+                  {captchaLoading ? (
+                    <div className="w-[200px] h-[70px] bg-gray-100 rounded flex items-center justify-center">
+                      <RefreshCw size={18} className="text-gray-400 animate-spin" />
+                    </div>
+                  ) : captchaImage ? (
+                    <img
+                      src={captchaImage}
+                      alt="Security code"
+                      width={200}
+                      height={70}
+                      className="rounded border border-gray-200 select-none"
+                      draggable={false}
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={fetchCaptcha}
+                    disabled={captchaLoading}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-600 transition-colors disabled:opacity-40"
+                    title="Refresh captcha"
+                  >
+                    <RefreshCw size={14} className={captchaLoading ? "animate-spin" : ""} />
+                    New code
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={captchaAnswer}
+                  onChange={(e) => setCaptchaAnswer(e.target.value.toUpperCase())}
+                  placeholder="Type the code shown above"
+                  maxLength={6}
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm tracking-widest font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !captchaImage}
               className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-60"
             >
               {loading ? "Creating account…" : "Create account"}

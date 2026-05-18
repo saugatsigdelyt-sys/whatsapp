@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import prisma from "../lib/prisma";
+import { generateCaptcha, verifyCaptcha } from "../lib/captcha";
 
 export const authRouter = Router();
 
@@ -11,6 +12,8 @@ const registerSchema = z.object({
   password: z.string().min(8),
   name: z.string().min(2),
   businessName: z.string().min(2),
+  captchaToken: z.string().min(1),
+  captchaAnswer: z.string().min(1),
 });
 
 const loginSchema = z.object({
@@ -22,6 +25,12 @@ function signToken(payload: object): string {
   const secret = process.env.JWT_SECRET!;
   return jwt.sign(payload, secret, { expiresIn: "7d" });
 }
+
+// GET /api/auth/captcha — generate a new captcha challenge
+authRouter.get("/captcha", (_req, res) => {
+  const { token, svgDataUrl } = generateCaptcha();
+  return res.json({ success: true, data: { token, image: svgDataUrl } });
+});
 
 // GET /api/auth/registration-status — public, no auth
 authRouter.get("/registration-status", async (_req, res, next) => {
@@ -47,6 +56,12 @@ authRouter.post("/register", async (req, res, next) => {
     }
 
     const body = registerSchema.parse(req.body);
+
+    // Verify captcha
+    const captchaResult = verifyCaptcha(body.captchaToken, body.captchaAnswer);
+    if (!captchaResult.valid) {
+      return res.status(400).json({ success: false, error: captchaResult.reason ?? "Invalid captcha" });
+    }
 
     const existing = await prisma.user.findUnique({ where: { email: body.email } });
     if (existing) {
