@@ -75,6 +75,20 @@ paymentsRouter.get("/prices", async (_req, res, next) => {
   }
 });
 
+// ── GET /api/payments/addresses — fetch all saved static addresses for this business
+paymentsRouter.get("/addresses", requireAuth, requireBusiness, async (req, res, next) => {
+  try {
+    const businessId = req.user!.businessId!;
+    const addresses = await prisma.oxapayAddress.findMany({
+      where: { businessId },
+      orderBy: { createdAt: "asc" },
+    });
+    return res.json({ success: true, data: addresses });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── POST /api/payments/static-address ───────────────────────────────────
 paymentsRouter.post("/static-address", requireAuth, requireBusiness, async (req, res, next) => {
   try {
