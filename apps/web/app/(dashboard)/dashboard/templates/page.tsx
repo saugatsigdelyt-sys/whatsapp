@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import api from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import {
   Plus, RefreshCw, Trash2, CheckCircle, Clock, XCircle, ChevronRight,
   ChevronLeft, Image, Type, AlignLeft, Link2, Phone, MessageSquare, Eye,
@@ -11,22 +12,18 @@ import {
 
 function fetcher(url: string) { return api.get(url).then((r) => r.data); }
 
-// ── Types ──────────────────────────────────────────────────────────────────
 interface WaCred { id: string; name: string; displayPhone: string | null; }
-
 interface Template {
   id: string; metaTemplateId: string; name: string; language: string;
   category: string; status: string; components: any[];
   waCredential: { name: string; displayPhone: string | null };
 }
-
 interface ComponentDef {
   type: "HEADER" | "BODY" | "FOOTER" | "BUTTONS";
   format?: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT";
   text?: string;
   buttons?: ButtonDef[];
 }
-
 interface ButtonDef {
   type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER";
   text: string;
@@ -34,7 +31,6 @@ interface ButtonDef {
   phone_number?: string;
 }
 
-// ── Status badge ───────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; cls: string; Icon: any }> = {
   APPROVED:   { label: "Approved",   cls: "bg-green-100 text-green-700", Icon: CheckCircle },
   PENDING:    { label: "Pending",    cls: "bg-yellow-100 text-yellow-700", Icon: Clock },
@@ -54,7 +50,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Phone preview ──────────────────────────────────────────────────────────
 function PhonePreview({ components }: { components: ComponentDef[] }) {
   const header = components.find((c) => c.type === "HEADER");
   const body   = components.find((c) => c.type === "BODY");
@@ -63,21 +58,16 @@ function PhonePreview({ components }: { components: ComponentDef[] }) {
 
   return (
     <div className="flex flex-col items-center">
-      {/* Phone shell */}
       <div className="w-64 rounded-3xl border-4 border-gray-800 bg-gray-800 shadow-2xl overflow-hidden">
-        {/* Status bar */}
         <div className="bg-gray-800 px-4 py-1 flex justify-between text-white text-xs">
           <span>9:41</span><span>●●●</span>
         </div>
-        {/* WhatsApp header bar */}
         <div className="bg-[#075E54] px-3 py-2 flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-green-300" />
           <span className="text-white text-sm font-medium">Preview</span>
         </div>
-        {/* Chat area */}
         <div className="bg-[#ece5dd] px-2 py-3 min-h-48 space-y-1">
           <div className="max-w-[90%] bg-white rounded-lg rounded-tl-none shadow-sm overflow-hidden">
-            {/* Header */}
             {header && (
               <div className="border-b border-gray-100">
                 {header.format === "IMAGE" ? (
@@ -91,20 +81,16 @@ function PhonePreview({ components }: { components: ComponentDef[] }) {
                 )}
               </div>
             )}
-            {/* Body */}
             <p className="px-2.5 py-2 text-xs text-gray-800 whitespace-pre-wrap leading-relaxed">
               {body?.text || <span className="italic text-gray-400">Message body…</span>}
             </p>
-            {/* Footer */}
             {footer?.text && (
               <p className="px-2.5 pb-2 text-[10px] text-gray-400">{footer.text}</p>
             )}
-            {/* Timestamp */}
             <div className="flex justify-end px-2 pb-1">
               <span className="text-[9px] text-gray-400">9:41 AM ✓✓</span>
             </div>
           </div>
-          {/* Buttons */}
           {btns?.buttons && btns.buttons.length > 0 && (
             <div className="max-w-[90%] space-y-1">
               {btns.buttons.map((btn, i) => (
@@ -120,10 +106,10 @@ function PhonePreview({ components }: { components: ComponentDef[] }) {
   );
 }
 
-// ── Template builder ───────────────────────────────────────────────────────
 function TemplateBuilder({
   credentialId, onClose, onSaved,
 }: { credentialId: string; onClose: () => void; onSaved: () => void }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [category, setCategory] = useState("MARKETING");
   const [language, setLanguage] = useState("en");
@@ -137,7 +123,7 @@ function TemplateBuilder({
 
   function addVariable() {
     const idx = (bodyText.match(/\{\{\d+\}\}/g) ?? []).length + 1;
-    setBodyText((t) => t + `{{${idx}}}`);
+    setBodyText((tx) => tx + `{{${idx}}}`);
   }
 
   function addButton(type: ButtonDef["type"]) {
@@ -153,15 +139,10 @@ function TemplateBuilder({
     setButtons((bs) => bs.filter((_, idx) => idx !== i));
   }
 
-  // Build components array
   function buildComponents(): ComponentDef[] {
     const comps: ComponentDef[] = [];
     if (headerType !== "NONE") {
-      comps.push({
-        type: "HEADER",
-        format: headerType,
-        ...(headerType === "TEXT" ? { text: headerText } : {}),
-      });
+      comps.push({ type: "HEADER", format: headerType, ...(headerType === "TEXT" ? { text: headerText } : {}) });
     }
     if (bodyText.trim()) comps.push({ type: "BODY", text: bodyText });
     if (footerText.trim()) comps.push({ type: "FOOTER", text: footerText });
@@ -171,20 +152,14 @@ function TemplateBuilder({
 
   async function handleSubmit() {
     setError("");
-    if (!name) { setError("Template name is required"); return; }
-    if (!/^[a-z0-9_]+$/.test(name)) { setError("Name must be lowercase letters, numbers and underscores only"); return; }
-    if (!bodyText.trim()) { setError("Body text is required"); return; }
-    if (buttons.some((b) => !b.text.trim())) { setError("All button texts are required"); return; }
+    if (!name) { setError(t("errTemplateNameRequired")); return; }
+    if (!/^[a-z0-9_]+$/.test(name)) { setError(t("errTemplateNameFormat")); return; }
+    if (!bodyText.trim()) { setError(t("errBodyRequired")); return; }
+    if (buttons.some((b) => !b.text.trim())) { setError(t("errButtonTextsRequired")); return; }
 
     setSaving(true);
     try {
-      await api.post("/api/templates/create", {
-        credentialId,
-        name,
-        language,
-        category,
-        components: buildComponents(),
-      });
+      await api.post("/api/templates/create", { credentialId, name, language, category, components: buildComponents() });
       onSaved();
       onClose();
     } catch (err: any) {
@@ -199,49 +174,30 @@ function TemplateBuilder({
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
-          <h2 className="text-lg font-semibold">Create Message Template</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-200 rounded-lg transition">
-            <X size={18} />
-          </button>
+          <h2 className="text-lg font-semibold">{t("createTemplateTitle")}</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-200 rounded-lg transition"><X size={18} /></button>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Builder panel */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-
-            {/* Name, Category, Language */}
             <div className="grid grid-cols-3 gap-4">
               <div className="col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Template Name *</label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                  placeholder="e.g. order_confirmed"
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Lowercase, numbers, underscores only</p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("templateNameLabel")}</label>
+                <input value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} placeholder="e.g. order_confirmed" className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <p className="text-xs text-gray-400 mt-1">{t("templateNameHint")}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="MARKETING">Marketing</option>
-                  <option value="UTILITY">Utility</option>
-                  <option value="AUTHENTICATION">Authentication</option>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("categoryLabel")}</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                  <option value="MARKETING">{t("catMarketing")}</option>
+                  <option value="UTILITY">{t("catUtility")}</option>
+                  <option value="AUTHENTICATION">{t("catAuthentication")}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Language *</label>
-                <select
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("languageLabel")}</label>
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                   <option value="en">English</option>
                   <option value="en_US">English (US)</option>
                   <option value="en_GB">English (UK)</option>
@@ -252,213 +208,141 @@ function TemplateBuilder({
                   <option value="ar">Arabic</option>
                   <option value="hi">Hindi</option>
                   <option value="ne">Nepali</option>
+                  <option value="zh_CN">Chinese (Simplified)</option>
                 </select>
               </div>
             </div>
 
-            {/* Header section */}
+            {/* Header */}
             <div className="border rounded-xl p-4 space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <Image size={16} className="text-purple-500" />
-                Header <span className="text-gray-400 font-normal">(optional)</span>
+                {t("headerLabel")} <span className="text-gray-400 font-normal">{t("optionalLabel")}</span>
               </div>
               <div className="flex gap-2">
-                {(["NONE", "TEXT", "IMAGE"] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setHeaderType(t)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                      headerType === t
-                        ? "bg-green-600 text-white border-green-600"
-                        : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
-                    }`}
-                  >
-                    {t === "NONE" ? "None" : t === "TEXT" ? "Text" : "Image"}
+                {(["NONE", "TEXT", "IMAGE"] as const).map((tp) => (
+                  <button key={tp} onClick={() => setHeaderType(tp)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${headerType === tp ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"}`}>
+                    {tp === "NONE" ? t("none") : tp === "TEXT" ? t("text") : t("image")}
                   </button>
                 ))}
               </div>
               {headerType === "TEXT" && (
-                <input
-                  value={headerText}
-                  onChange={(e) => setHeaderText(e.target.value)}
-                  placeholder="Header text (max 60 chars)"
-                  maxLength={60}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
+                <input value={headerText} onChange={(e) => setHeaderText(e.target.value)} placeholder={t("headerTextPlaceholder")} maxLength={60} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
               )}
               {headerType === "IMAGE" && (
                 <div className="flex items-center gap-2 bg-gray-50 border border-dashed border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-500">
-                  <Image size={16} />
-                  Image will be uploaded when sending the template
+                  <Image size={16} /> {t("imageUploadNote")}
                 </div>
               )}
             </div>
 
-            {/* Body section */}
+            {/* Body */}
             <div className="border rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <AlignLeft size={16} className="text-blue-500" />
-                  Body <span className="text-red-500">*</span>
+                  {t("bodyLabel")} <span className="text-red-500">*</span>
                 </div>
-                <button
-                  onClick={addVariable}
-                  className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
-                >
-                  <Plus size={12} /> Add variable
+                <button onClick={addVariable} className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1">
+                  <Plus size={12} /> {t("addVariable")}
                 </button>
               </div>
-              <textarea
-                value={bodyText}
-                onChange={(e) => setBodyText(e.target.value)}
-                placeholder="Hi {{1}}, your order {{2}} has been confirmed. Thank you for shopping with us!"
-                rows={5}
-                maxLength={1024}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-              />
+              <textarea value={bodyText} onChange={(e) => setBodyText(e.target.value)} placeholder={t("bodyPlaceholder")} rows={5} maxLength={1024}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none" />
               <div className="flex items-center justify-between text-xs text-gray-400">
-                <span>Use {`{{1}}`}, {`{{2}}`} etc. for dynamic variables</span>
+                <span>{t("bodyHint")}</span>
                 <span>{bodyText.length}/1024</span>
               </div>
             </div>
 
-            {/* Footer section */}
+            {/* Footer */}
             <div className="border rounded-xl p-4 space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <Type size={16} className="text-gray-400" />
-                Footer <span className="text-gray-400 font-normal">(optional)</span>
+                {t("footerLabel")} <span className="text-gray-400 font-normal">{t("optionalLabel")}</span>
               </div>
-              <input
-                value={footerText}
-                onChange={(e) => setFooterText(e.target.value)}
-                placeholder="Not interested? Tap Stop promotions"
-                maxLength={60}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
+              <input value={footerText} onChange={(e) => setFooterText(e.target.value)} placeholder={t("footerPlaceholder")} maxLength={60}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
             </div>
 
-            {/* Buttons section */}
+            {/* Buttons */}
             <div className="border rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <Link2 size={16} className="text-orange-500" />
-                  Buttons <span className="text-gray-400 font-normal">(optional, max 3)</span>
+                  {t("buttonsLabel")} <span className="text-gray-400 font-normal">{t("buttonsOptional")}</span>
                 </div>
                 {buttons.length < 3 && (
                   <div className="flex gap-1">
-                    <button
-                      onClick={() => addButton("QUICK_REPLY")}
-                      className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center gap-1"
-                    >
-                      <MessageSquare size={11} /> Quick Reply
+                    <button onClick={() => addButton("QUICK_REPLY")} className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center gap-1">
+                      <MessageSquare size={11} /> {t("quickReply")}
                     </button>
-                    <button
-                      onClick={() => addButton("URL")}
-                      className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center gap-1"
-                    >
-                      <Link2 size={11} /> URL
+                    <button onClick={() => addButton("URL")} className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center gap-1">
+                      <Link2 size={11} /> {t("urlButton")}
                     </button>
-                    <button
-                      onClick={() => addButton("PHONE_NUMBER")}
-                      className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center gap-1"
-                    >
-                      <Phone size={11} /> Call
+                    <button onClick={() => addButton("PHONE_NUMBER")} className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center gap-1">
+                      <Phone size={11} /> {t("callButton")}
                     </button>
                   </div>
                 )}
               </div>
-
               {buttons.length === 0 && (
-                <p className="text-xs text-gray-400 italic">No buttons added. Use the buttons above to add Quick Reply, URL, or Call buttons.</p>
+                <p className="text-xs text-gray-400 italic">{t("noButtonsAdded")}</p>
               )}
-
               {buttons.map((btn, i) => (
                 <div key={i} className="flex gap-2 items-start">
                   <div className="flex-1 grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">
-                        {btn.type === "QUICK_REPLY" ? "Reply Text" : btn.type === "URL" ? "Button Text" : "Button Text"}
+                        {btn.type === "QUICK_REPLY" ? t("replyText") : t("buttonText")}
                       </label>
-                      <input
-                        value={btn.text}
-                        onChange={(e) => updateButton(i, { text: e.target.value })}
-                        placeholder="Button label"
-                        maxLength={25}
-                        className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
-                      />
+                      <input value={btn.text} onChange={(e) => updateButton(i, { text: e.target.value })}
+                        placeholder={t("buttonLabelPlaceholder")} maxLength={25}
+                        className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500" />
                     </div>
                     {btn.type === "URL" && (
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">URL</label>
-                        <input
-                          value={btn.url ?? ""}
-                          onChange={(e) => updateButton(i, { url: e.target.value })}
-                          placeholder="https://example.com"
-                          className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
-                        />
+                        <label className="text-xs text-gray-500 mb-1 block">{t("urlButton")}</label>
+                        <input value={btn.url ?? ""} onChange={(e) => updateButton(i, { url: e.target.value })}
+                          placeholder="https://example.com" className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500" />
                       </div>
                     )}
                     {btn.type === "PHONE_NUMBER" && (
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Phone Number</label>
-                        <input
-                          value={btn.phone_number ?? ""}
-                          onChange={(e) => updateButton(i, { phone_number: e.target.value })}
-                          placeholder="+1234567890"
-                          className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
-                        />
+                        <label className="text-xs text-gray-500 mb-1 block">{t("colPhone")}</label>
+                        <input value={btn.phone_number ?? ""} onChange={(e) => updateButton(i, { phone_number: e.target.value })}
+                          placeholder="+1234567890" className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500" />
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={() => removeButton(i)}
-                    className="mt-5 p-1.5 text-red-400 hover:bg-red-50 rounded-lg"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <button onClick={() => removeButton(i)} className="mt-5 p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
                 </div>
               ))}
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-                {error}
-              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>
             )}
           </div>
 
-          {/* Preview panel */}
+          {/* Preview */}
           <div className="w-72 border-l bg-gray-50 overflow-y-auto p-6 flex flex-col gap-4">
             <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <Eye size={15} /> Live Preview
+              <Eye size={15} /> {t("livePreview")}
             </h3>
             <PhonePreview components={previewComponents} />
-            <div className="text-xs text-gray-400 text-center">Preview updates as you type</div>
+            <div className="text-xs text-gray-400 text-center">{t("previewUpdates")}</div>
           </div>
         </div>
 
-        {/* Footer actions */}
         <div className="border-t px-6 py-4 flex items-center justify-between bg-gray-50">
-          <p className="text-xs text-gray-500">
-            Templates submitted for Meta review. Approval typically takes a few minutes to 24 hours.
-          </p>
+          <p className="text-xs text-gray-500">{t("templateSubmitNote")}</p>
           <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg border text-sm hover:bg-gray-100 transition"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className="px-5 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition flex items-center gap-2"
-            >
-              {saving ? (
-                <><RefreshCw size={14} className="animate-spin" /> Submitting…</>
-              ) : (
-                <><Send size={14} /> Submit to Meta</>
-              )}
+            <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm hover:bg-gray-100 transition">{t("cancel")}</button>
+            <button onClick={handleSubmit} disabled={saving}
+              className="px-5 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition flex items-center gap-2">
+              {saving ? (<><RefreshCw size={14} className="animate-spin" /> {t("submittingTemplate")}</>) : (<><Send size={14} /> {t("submitToMeta")}</>)}
             </button>
           </div>
         </div>
@@ -467,11 +351,11 @@ function TemplateBuilder({
   );
 }
 
-// ── Template card ──────────────────────────────────────────────────────────
 function TemplateCard({ tpl, onDelete }: { tpl: Template; onDelete: () => void }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const body = tpl.components.find((c: any) => c.type === "BODY");
-  const preview = body?.text?.substring(0, 80) ?? "No body";
+  const preview = body?.text?.substring(0, 80) ?? t("noBody");
 
   return (
     <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
@@ -484,25 +368,15 @@ function TemplateCard({ tpl, onDelete }: { tpl: Template; onDelete: () => void }
             <span className="text-xs text-gray-400">{tpl.language}</span>
           </div>
           <p className="text-xs text-gray-500 mt-1 truncate">{preview}{body?.text?.length > 80 ? "…" : ""}</p>
-          <p className="text-xs text-gray-400 mt-1">Account: {tpl.waCredential.name}</p>
+          <p className="text-xs text-gray-400 mt-1">{t("accountLabel")} {tpl.waCredential.name}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition"
-          >
+          <button onClick={() => setExpanded((v) => !v)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition">
             {expanded ? <ChevronLeft size={15} /> : <ChevronRight size={15} />}
           </button>
-          <button
-            onClick={onDelete}
-            className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition"
-          >
-            <Trash2 size={14} />
-          </button>
+          <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition"><Trash2 size={14} /></button>
         </div>
       </div>
-
-      {/* Expanded preview */}
       {expanded && (
         <div className="border-t bg-gray-50 px-4 py-4 flex gap-6">
           <div className="flex-1 space-y-2">
@@ -510,16 +384,12 @@ function TemplateCard({ tpl, onDelete }: { tpl: Template; onDelete: () => void }
               <div key={i}>
                 <span className="text-xs font-semibold text-gray-500">{comp.type}</span>
                 {comp.format && <span className="ml-1 text-xs text-gray-400">({comp.format})</span>}
-                {comp.text && (
-                  <p className="text-xs text-gray-700 mt-0.5 whitespace-pre-wrap">{comp.text}</p>
-                )}
+                {comp.text && <p className="text-xs text-gray-700 mt-0.5 whitespace-pre-wrap">{comp.text}</p>}
                 {comp.buttons && (
                   <div className="mt-1 space-y-0.5">
                     {comp.buttons.map((b: any, bi: number) => (
                       <div key={bi} className="text-xs text-blue-600">
-                        [{b.type}] {b.text}
-                        {b.url ? ` → ${b.url}` : ""}
-                        {b.phone_number ? ` → ${b.phone_number}` : ""}
+                        [{b.type}] {b.text}{b.url ? ` → ${b.url}` : ""}{b.phone_number ? ` → ${b.phone_number}` : ""}
                       </div>
                     ))}
                   </div>
@@ -534,8 +404,8 @@ function TemplateCard({ tpl, onDelete }: { tpl: Template; onDelete: () => void }
   );
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────
 export default function TemplatesPage() {
+  const t = useT();
   const [credId, setCredId] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -552,9 +422,9 @@ export default function TemplatesPage() {
   );
   const templates: Template[] = tplData?.data ?? [];
 
-  const filtered = templates.filter((t) => {
-    if (statusFilter && t.status !== statusFilter) return false;
-    if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
+  const filtered = templates.filter((tp) => {
+    if (statusFilter && tp.status !== statusFilter) return false;
+    if (search && !tp.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -562,71 +432,53 @@ export default function TemplatesPage() {
     setSyncing(true);
     try {
       const creds = credId ? [credId] : accounts.map((a) => a.id);
-      for (const cid of creds) {
-        await api.post("/api/templates/sync", { credentialId: cid });
-      }
+      for (const cid of creds) { await api.post("/api/templates/sync", { credentialId: cid }); }
       mutate(`/api/templates${credId ? `?credentialId=${credId}` : ""}`);
-    } catch { alert("Sync failed"); }
+    } catch { alert(t("syncFailed")); }
     finally { setSyncing(false); }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this template locally? (It will remain on Meta.)")) return;
+    if (!confirm(t("deleteLocallyConfirm"))) return;
     try {
       await api.delete(`/api/templates/${id}`);
       mutate(`/api/templates${credId ? `?credentialId=${credId}` : ""}`);
-    } catch { alert("Delete failed"); }
+    } catch { alert(t("deleteFailed")); }
   }
 
-  // Status summary counts
-  const counts = templates.reduce<Record<string, number>>((acc, t) => {
-    acc[t.status] = (acc[t.status] ?? 0) + 1;
+  const counts = templates.reduce<Record<string, number>>((acc, tp) => {
+    acc[tp.status] = (acc[tp.status] ?? 0) + 1;
     return acc;
   }, {});
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Message Templates</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Design and submit WhatsApp templates for Meta approval. Approved templates can be sent in bulk.
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">{t("templatesTitle")}</h1>
+          <p className="text-sm text-gray-500 mt-1">{t("templatesSubtitle")}</p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={handleSync}
-            disabled={syncing || accounts.length === 0}
-            className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50 transition"
-          >
+          <button onClick={handleSync} disabled={syncing || accounts.length === 0}
+            className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50 transition">
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-            Sync from Meta
+            {syncing ? t("syncing") : t("syncFromMeta")}
           </button>
-          <button
-            onClick={() => setShowBuilder(true)}
-            disabled={accounts.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition"
-          >
-            <Plus size={15} /> New Template
+          <button onClick={() => setShowBuilder(true)} disabled={accounts.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition">
+            <Plus size={15} /> {t("newTemplate")}
           </button>
         </div>
       </div>
 
-      {/* Status summary */}
       {templates.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {Object.entries(STATUS_CONFIG).map(([key, cfg]) => {
             const count = counts[key] ?? 0;
             if (count === 0) return null;
             return (
-              <button
-                key={key}
-                onClick={() => setStatusFilter(statusFilter === key ? "" : key)}
-                className={`flex items-center gap-3 p-3 rounded-xl border transition text-left ${
-                  statusFilter === key ? "ring-2 ring-green-500 border-transparent" : "hover:border-gray-300"
-                }`}
-              >
+              <button key={key} onClick={() => setStatusFilter(statusFilter === key ? "" : key)}
+                className={`flex items-center gap-3 p-3 rounded-xl border transition text-left ${statusFilter === key ? "ring-2 ring-green-500 border-transparent" : "hover:border-gray-300"}`}>
                 <cfg.Icon size={18} className={cfg.cls.replace("bg-", "text-").split(" ")[0].replace("100", "600")} />
                 <div>
                   <div className="text-lg font-bold text-gray-900">{count}</div>
@@ -638,64 +490,39 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Filters */}
       <div className="flex gap-3 flex-wrap">
-        <select
-          value={credId}
-          onChange={(e) => setCredId(e.target.value)}
-          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-        >
-          <option value="">All accounts</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}{a.displayPhone ? ` (${a.displayPhone})` : ""}
-            </option>
-          ))}
+        <select value={credId} onChange={(e) => setCredId(e.target.value)}
+          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+          <option value="">{t("allAccounts")}</option>
+          {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}{a.displayPhone ? ` (${a.displayPhone})` : ""}</option>)}
         </select>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search templates…"
-          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 flex-1 min-w-48"
-        />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("searchTemplates")}
+          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 flex-1 min-w-48" />
         {statusFilter && (
-          <button
-            onClick={() => setStatusFilter("")}
-            className="flex items-center gap-1 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50"
-          >
-            <X size={13} /> Clear filter
+          <button onClick={() => setStatusFilter("")} className="flex items-center gap-1 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50">
+            <X size={13} /> {t("clearFilter")}
           </button>
         )}
       </div>
 
-      {/* Template list */}
       {accounts.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <MessageSquare size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">No WhatsApp accounts connected yet.</p>
-          <p className="text-xs mt-1">Go to Settings → Import Credentials first.</p>
+          <p className="text-sm">{t("noAccountsConnected")}</p>
+          <p className="text-xs mt-1">{t("goToSettingsImport")}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <MessageSquare size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">
-            {templates.length === 0
-              ? "No templates found. Click \"Sync from Meta\" to pull existing templates, or create a new one."
-              : "No templates match your filters."}
-          </p>
+          <p className="text-sm">{templates.length === 0 ? t("noTemplatesFound") : t("noTemplatesMatchFilter")}</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((tpl) => (
-            <TemplateCard key={tpl.id} tpl={tpl} onDelete={() => handleDelete(tpl.id)} />
-          ))}
-          <p className="text-xs text-gray-400 text-right">
-            Showing {filtered.length} of {templates.length} templates
-          </p>
+          {filtered.map((tpl) => <TemplateCard key={tpl.id} tpl={tpl} onDelete={() => handleDelete(tpl.id)} />)}
+          <p className="text-xs text-gray-400 text-right">{t("showingXOfY", filtered.length, templates.length)}</p>
         </div>
       )}
 
-      {/* Builder modal */}
       {showBuilder && accounts.length > 0 && (
         <BuilderWithAccount
           accounts={accounts}
@@ -707,12 +534,8 @@ export default function TemplatesPage() {
   );
 }
 
-// Wrapper that asks which account to create for, then opens builder
-function BuilderWithAccount({ accounts, onClose, onSaved }: {
-  accounts: WaCred[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+function BuilderWithAccount({ accounts, onClose, onSaved }: { accounts: WaCred[]; onClose: () => void; onSaved: () => void }) {
+  const t = useT();
   const [selectedCredId, setSelectedCredId] = useState(accounts[0]?.id ?? "");
   const [ready, setReady] = useState(accounts.length === 1);
 
@@ -720,26 +543,16 @@ function BuilderWithAccount({ accounts, onClose, onSaved }: {
     return (
       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl p-6 w-96 shadow-2xl space-y-4">
-          <h2 className="text-lg font-semibold">Choose Account</h2>
-          <p className="text-sm text-gray-500">Which WhatsApp account should this template be created for?</p>
-          <select
-            value={selectedCredId}
-            onChange={(e) => setSelectedCredId(e.target.value)}
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-          >
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}{a.displayPhone ? ` (${a.displayPhone})` : ""}
-              </option>
-            ))}
+          <h2 className="text-lg font-semibold">{t("chooseAccount")}</h2>
+          <p className="text-sm text-gray-500">{t("chooseAccountMsg")}</p>
+          <select value={selectedCredId} onChange={(e) => setSelectedCredId(e.target.value)}
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}{a.displayPhone ? ` (${a.displayPhone})` : ""}</option>)}
           </select>
           <div className="flex gap-3 justify-end">
-            <button onClick={onClose} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button>
-            <button
-              onClick={() => setReady(true)}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
-            >
-              Continue <ChevronRight size={14} className="inline" />
+            <button onClick={onClose} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">{t("cancel")}</button>
+            <button onClick={() => setReady(true)} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+              {t("continueBtn")} <ChevronRight size={14} className="inline" />
             </button>
           </div>
         </div>
@@ -747,11 +560,5 @@ function BuilderWithAccount({ accounts, onClose, onSaved }: {
     );
   }
 
-  return (
-    <TemplateBuilder
-      credentialId={selectedCredId}
-      onClose={onClose}
-      onSaved={onSaved}
-    />
-  );
+  return <TemplateBuilder credentialId={selectedCredId} onClose={onClose} onSaved={onSaved} />;
 }

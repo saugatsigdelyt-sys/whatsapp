@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import api from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import {
   CheckCircle, AlertCircle, Eye, EyeOff,
   Plus, Trash2, Pencil, X, ChevronUp,
@@ -31,6 +32,7 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 export default function SettingsPage() {
+  const t = useT();
   const { data: accountsData, isLoading: loadingAccounts } = useSWR("/api/accounts", fetcher);
   const { data: subData } = useSWR("/api/subscription", fetcher);
 
@@ -69,13 +71,13 @@ export default function SettingsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Remove this WhatsApp account?")) return;
+    if (!confirm(t("confirmRemoveAccount"))) return;
     setDeletingId(id);
     try {
       await api.delete(`/api/accounts/${id}`);
       mutate("/api/accounts");
       mutate("/api/subscription");
-    } catch { alert("Failed to remove account"); }
+    } catch { alert(t("failedToRemoveAccount")); }
     finally { setDeletingId(null); }
   }
 
@@ -85,7 +87,7 @@ export default function SettingsPage() {
       await api.patch(`/api/accounts/${id}`, { name: renameValue.trim() });
       mutate("/api/accounts");
       setRenamingId(null);
-    } catch { alert("Failed to rename"); }
+    } catch { alert(t("failedToRename")); }
   }
 
   const atLimit = sub ? !sub.canAddWaAccount : false;
@@ -96,8 +98,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">WhatsApp Accounts</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Import and manage your WhatsApp Cloud API credentials</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t("settingsTitle")}</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{t("settingsSubtitle")}</p>
       </div>
 
       {sub && (
@@ -106,11 +108,11 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2">
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TIER_COLORS[sub.tier]}`}>{sub.tier}</span>
               <span className="text-sm text-gray-600">
-                {sub.usage.waAccounts} / {sub.limits.maxWaAccounts === Infinity ? "∞" : sub.limits.maxWaAccounts} accounts used
+                {t("accountsUsed", sub.usage.waAccounts, sub.limits.maxWaAccounts === Infinity ? "∞" : String(sub.limits.maxWaAccounts))}
               </span>
             </div>
             <a href="/pricing" className="text-xs text-brand-600 font-medium hover:underline flex items-center gap-1">
-              <ChevronUp size={12} /> Upgrade plan
+              <ChevronUp size={12} /> {t("upgradePlan")}
             </a>
           </div>
           {sub.limits.maxWaAccounts !== Infinity && (
@@ -130,7 +132,7 @@ export default function SettingsPage() {
       )}
 
       {loadingAccounts ? (
-        <div className="text-sm text-gray-400">Loading accounts...</div>
+        <div className="text-sm text-gray-400">{t("loadingAccounts")}</div>
       ) : accounts.length > 0 ? (
         <div className="space-y-3">
           {accounts.map((acc) => (
@@ -142,8 +144,8 @@ export default function SettingsPage() {
                 {renamingId === acc.id ? (
                   <div className="flex items-center gap-2">
                     <input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleRename(acc.id); if (e.key === "Escape") setRenamingId(null); }} className="border border-gray-300 rounded-lg px-2 py-1 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-brand-500" autoFocus />
-                    <button onClick={() => handleRename(acc.id)} className="text-xs bg-brand-600 text-white px-2 py-1 rounded-lg">Save</button>
-                    <button onClick={() => setRenamingId(null)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+                    <button onClick={() => handleRename(acc.id)} className="text-xs bg-brand-600 text-white px-2 py-1 rounded-lg">{t("save")}</button>
+                    <button onClick={() => setRenamingId(null)} className="text-xs text-gray-500 hover:text-gray-700">{t("cancel")}</button>
                   </div>
                 ) : (
                   <div className="font-medium text-gray-900 text-sm truncate">{acc.name}</div>
@@ -151,7 +153,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                   <span className="text-xs text-gray-400 font-mono">App: {acc.appId}</span>
                   <span className="text-xs text-gray-400 font-mono">WABA: {acc.wabaId}</span>
-                  {acc.webhookRegistered && <span className="text-xs text-green-600 font-medium">● Webhook active</span>}
+                  {acc.webhookRegistered && <span className="text-xs text-green-600 font-medium">{t("webhookActive")}</span>}
                 </div>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
@@ -163,47 +165,55 @@ export default function SettingsPage() {
         </div>
       ) : (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          <strong>No accounts yet.</strong> Import your first WhatsApp Cloud API credentials below.
+          <strong>{t("noAccountsYet")}</strong>
         </div>
       )}
 
       {atLimit ? (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-sm text-orange-800 flex items-center justify-between">
-          <span><strong>Account limit reached.</strong> Upgrade your plan to connect more accounts.</span>
-          <a href="/pricing" className="ml-4 shrink-0 bg-orange-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-orange-600">Upgrade →</a>
+          <span><strong>{t("accountLimitReached")}</strong> {t("accountLimitMsg")}</span>
+          <a href="/pricing" className="ml-4 shrink-0 bg-orange-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-orange-600">{t("upgradeBtn")}</a>
         </div>
       ) : (
         <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-4 py-2.5 rounded-xl transition-colors border border-brand-100">
           <Plus size={15} />
-          {showForm ? "Cancel" : "Import new WhatsApp account"}
+          {showForm ? t("cancel") : t("importNewAccount")}
         </button>
       )}
 
       {showForm && !atLimit && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="font-semibold text-gray-900 mb-1">Import WhatsApp Cloud API Credentials</h2>
-          <p className="text-sm text-gray-500 mb-5">Find these in the <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer" className="text-brand-600 underline">Meta Developer Portal</a>. All secrets are AES-256 encrypted.</p>
+          <h2 className="font-semibold text-gray-900 mb-1">{t("importCredentialsTitle")}</h2>
+          <p className="text-sm text-gray-500 mb-5">
+            {t("importCredentialsSubtitle").split("Meta Developer Portal").length > 1 ? (
+              <>
+                {t("importCredentialsSubtitle").split("Meta Developer Portal")[0]}
+                <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer" className="text-brand-600 underline">Meta Developer Portal</a>
+                {t("importCredentialsSubtitle").split("Meta Developer Portal")[1]}
+              </>
+            ) : t("importCredentialsSubtitle")}
+          </p>
           <form onSubmit={handleImport} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Account Label</label>
-              <input name="name" value={form.name} onChange={handleChange} placeholder="e.g. Customer Support" className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">{t("fieldAccountLabel")}</label>
+              <input name="name" value={form.name} onChange={handleChange} placeholder={t("placeholderCustomerSupport")} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
             </div>
             {[
-              { name: "appId", label: "App ID", placeholder: "Meta App ID" },
-              { name: "wabaId", label: "WhatsApp Business Account ID", placeholder: "WABA ID" },
-              { name: "phoneNumberId", label: "Phone Number ID", placeholder: "Phone Number ID" },
+              { name: "appId", labelKey: "fieldAppId", placeholderKey: "placeholderMetaAppId" },
+              { name: "wabaId", labelKey: "fieldWabaId", placeholderKey: "placeholderWabaId" },
+              { name: "phoneNumberId", labelKey: "fieldPhoneNumberId", placeholderKey: "placeholderPhoneNumberId" },
             ].map((field) => (
               <div key={field.name}>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">{field.label}</label>
-                <input name={field.name} value={form[field.name as keyof typeof form]} onChange={handleChange} placeholder={field.placeholder} required className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t(field.labelKey)}</label>
+                <input name={field.name} value={form[field.name as keyof typeof form]} onChange={handleChange} placeholder={t(field.placeholderKey)} required className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>
             ))}
             {[
-              { name: "appSecret", label: "App Secret" },
-              { name: "accessToken", label: "System User Access Token" },
+              { name: "appSecret", labelKey: "fieldAppSecret" },
+              { name: "accessToken", labelKey: "fieldAccessToken" },
             ].map((field) => (
               <div key={field.name}>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">{field.label}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t(field.labelKey)}</label>
                 <div className="relative">
                   <input type={showSecret ? "text" : "password"} name={field.name} value={form[field.name as keyof typeof form]} onChange={handleChange} required className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 pr-10" />
                   <button type="button" onClick={() => setShowSecret((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -213,7 +223,7 @@ export default function SettingsPage() {
               </div>
             ))}
             <button type="submit" disabled={loading} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-60">
-              {loading ? "Verifying & importing..." : "Import credentials"}
+              {loading ? t("verifyingImporting") : t("importCredentials")}
             </button>
           </form>
         </div>

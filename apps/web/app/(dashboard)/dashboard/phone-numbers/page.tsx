@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import api from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { Phone } from "lucide-react";
 
 function fetcher(url: string) {
@@ -15,6 +16,7 @@ const QUALITY_COLORS: Record<string, string> = {
 };
 
 export default function PhoneNumbersPage() {
+  const t = useT();
   const { data: phones, isLoading } = useSWR("/api/accounts/phone-numbers/all", fetcher);
 
   return (
@@ -22,25 +24,25 @@ export default function PhoneNumbersPage() {
       <div className="flex items-center gap-3">
         <Phone size={20} className="text-gray-400" />
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Phone Numbers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">WhatsApp Business phone numbers on your account</p>
+          <h1 className="text-xl font-semibold text-gray-900">{t("phoneNumbersTitle")}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t("phoneNumbersSubtitle")}</p>
         </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
+          <div className="p-8 text-center text-sm text-gray-400">{t("loadingPhoneNumbers")}</div>
         ) : !phones?.length ? (
-          <div className="p-8 text-center text-sm text-gray-400">No phone numbers found. Import your credentials to sync phone numbers.</div>
+          <div className="p-8 text-center text-sm text-gray-400">{t("noPhoneNumbers")}</div>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Phone</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Verified Name</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Quality</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Phone Number ID</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">{t("colPhone")}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">{t("colVerifiedName")}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">{t("colQuality")}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">{t("colStatus")}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">{t("colPhoneNumberId")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">

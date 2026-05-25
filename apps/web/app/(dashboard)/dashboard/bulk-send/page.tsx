@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import useSWR, { mutate } from "swr";
 import api from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { Upload, Send, CheckCircle, AlertCircle, Clock, X, Download } from "lucide-react";
 
 function fetcher(url: string) { return api.get(url).then((r) => r.data); }
@@ -28,6 +29,7 @@ function parseCSV(text: string): string[] {
 }
 
 function JobRow({ job }: { job: Job }) {
+  const t = useT();
   const [showErrors, setShowErrors] = useState(false);
   const errors: ErrorEntry[] = Array.isArray(job.errorLog) ? job.errorLog : [];
 
@@ -39,25 +41,22 @@ function JobRow({ job }: { job: Job }) {
           <div className="text-xs text-gray-400">{job.waCredential.name} · {new Date(job.createdAt).toLocaleString()}</div>
         </div>
         <div className="text-xs text-gray-500 text-right shrink-0">
-          <div className="text-green-600 font-medium">{job.sentCount}/{job.totalCount} sent</div>
+          <div className="text-green-600 font-medium">{job.sentCount}/{job.totalCount} {t("sentLabel")}</div>
           {job.failedCount > 0 && (
-            <button
-              onClick={() => setShowErrors((v) => !v)}
-              className="text-red-500 hover:underline font-medium"
-            >
-              {job.failedCount} failed {showErrors ? "▲" : "▼"}
+            <button onClick={() => setShowErrors((v) => !v)} className="text-red-500 hover:underline font-medium">
+              {job.failedCount} {t("colStatus")} {showErrors ? "▲" : "▼"}
             </button>
           )}
         </div>
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[job.status] ?? "bg-gray-100 text-gray-600"}`}>
           {job.status === "RUNNING"
-            ? <span className="flex items-center gap-1"><Clock size={10} className="animate-spin" /> Running</span>
+            ? <span className="flex items-center gap-1"><Clock size={10} className="animate-spin" /> {t("runningLabel")}</span>
             : job.status}
         </span>
       </div>
       {showErrors && errors.length > 0 && (
         <div className="mx-5 mb-3 bg-red-50 border border-red-200 rounded-lg overflow-hidden">
-          <div className="px-3 py-2 bg-red-100 text-xs font-semibold text-red-700">Failed recipients</div>
+          <div className="px-3 py-2 bg-red-100 text-xs font-semibold text-red-700">{t("failedRecipients")}</div>
           <div className="max-h-48 overflow-y-auto divide-y divide-red-100">
             {errors.map((e, i) => (
               <div key={i} className="px-3 py-2 flex items-start gap-3">
@@ -73,7 +72,7 @@ function JobRow({ job }: { job: Job }) {
 }
 
 export default function BulkSendPage() {
-  const [step, setStep] = useState(1);
+  const t = useT();
   const [credId, setCredId] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [phones, setPhones] = useState<string[]>([]);
@@ -88,12 +87,12 @@ export default function BulkSendPage() {
 
   const { data: tplData } = useSWR(credId ? `/api/templates?credentialId=${credId}` : null, fetcher);
   const allTemplates: Template[] = tplData?.data ?? [];
-  const approvedTemplates = allTemplates.filter((t) => t.status === "APPROVED");
+  const approvedTemplates = allTemplates.filter((tp) => tp.status === "APPROVED");
 
   const { data: jobsData } = useSWR("/api/bulk-send", fetcher, { refreshInterval: 5000 });
   const jobs: Job[] = jobsData?.data ?? [];
 
-  const selectedTemplate = approvedTemplates.find((t) => t.id === templateId);
+  const selectedTemplate = approvedTemplates.find((tp) => tp.id === templateId);
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -120,7 +119,7 @@ export default function BulkSendPage() {
     try {
       await api.post("/api/templates/sync", { credentialId: credId });
       mutate(`/api/templates?credentialId=${credId}`);
-    } catch { alert("Sync failed"); }
+    } catch { alert(t("syncFailed")); }
     finally { setSyncing(false); }
   }
 
@@ -134,9 +133,8 @@ export default function BulkSendPage() {
         templateId,
         recipients: phones.map((p) => ({ phone: p })),
       });
-      setResult({ success: true, message: `Bulk send started! Job ID: ${data.data.jobId}` });
+      setResult({ success: true, message: t("bulkStarted", data.data.jobId) });
       mutate("/api/bulk-send");
-      setStep(1);
       setPhones([]);
       setRawInput("");
       setTemplateId("");
@@ -157,8 +155,8 @@ export default function BulkSendPage() {
   return (
     <div className="max-w-3xl space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Bulk Send</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Send approved WhatsApp templates to a list of recipients</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t("bulkSendTitle")}</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{t("bulkSendSubtitle")}</p>
       </div>
 
       {result && (
@@ -169,43 +167,42 @@ export default function BulkSendPage() {
         </div>
       )}
 
-      {/* Steps */}
       <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6">
-        {/* Step 1: Select phone */}
+        {/* Step 1 */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${credId ? "bg-brand-600 text-white" : "bg-gray-200 text-gray-600"}`}>1</span>
-            <span className="font-medium text-gray-800">Select WhatsApp Account</span>
+            <span className="font-medium text-gray-800">{t("stepSelectAccount")}</span>
           </div>
           <select value={credId} onChange={(e) => { setCredId(e.target.value); setTemplateId(""); setPhones([]); }}
             className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
-            <option value="">— Choose account —</option>
+            <option value="">{t("chooseAccountOption")}</option>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} {a.displayPhone ? `(${a.displayPhone})` : ""}</option>)}
           </select>
         </div>
 
-        {/* Step 2: Select template */}
+        {/* Step 2 */}
         {credId && (
           <div>
             <div className="flex items-center gap-2 mb-3">
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${templateId ? "bg-brand-600 text-white" : "bg-gray-200 text-gray-600"}`}>2</span>
-              <span className="font-medium text-gray-800">Select Approved Template</span>
+              <span className="font-medium text-gray-800">{t("stepSelectTemplate")}</span>
               <button onClick={handleSync} disabled={syncing} className="ml-auto text-xs text-brand-600 hover:underline">
-                {syncing ? "Syncing…" : "↻ Sync from Meta"}
+                {syncing ? t("syncing") : `↻ ${t("syncFromMeta")}`}
               </button>
             </div>
             {approvedTemplates.length === 0 ? (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-                No approved templates found. Go to <a href="/dashboard/templates" className="underline font-medium">Templates</a> to create and get approval, or click "Sync from Meta" above.
+                {t("noApprovedTemplates", "/dashboard/templates")}
               </div>
             ) : (
               <div className="grid gap-2">
-                {approvedTemplates.map((t) => (
-                  <label key={t.id} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${templateId === t.id ? "border-brand-400 bg-brand-50" : "border-gray-200 hover:bg-gray-50"}`}>
-                    <input type="radio" name="template" value={t.id} checked={templateId === t.id} onChange={() => setTemplateId(t.id)} className="mt-0.5 accent-brand-600" />
+                {approvedTemplates.map((tp) => (
+                  <label key={tp.id} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${templateId === tp.id ? "border-brand-400 bg-brand-50" : "border-gray-200 hover:bg-gray-50"}`}>
+                    <input type="radio" name="template" value={tp.id} checked={templateId === tp.id} onChange={() => setTemplateId(tp.id)} className="mt-0.5 accent-brand-600" />
                     <div className="min-w-0">
-                      <div className="font-medium text-sm text-gray-800">{t.name}</div>
-                      <div className="text-xs text-gray-500">{t.category} · {t.language}</div>
+                      <div className="font-medium text-sm text-gray-800">{tp.name}</div>
+                      <div className="text-xs text-gray-500">{tp.category} · {tp.language}</div>
                     </div>
                     <span className="shrink-0 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">APPROVED</span>
                   </label>
@@ -215,72 +212,60 @@ export default function BulkSendPage() {
           </div>
         )}
 
-        {/* Step 3: Upload recipients */}
+        {/* Step 3 */}
         {credId && templateId && (
           <div>
             <div className="flex items-center gap-2 mb-3">
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${phones.length > 0 ? "bg-brand-600 text-white" : "bg-gray-200 text-gray-600"}`}>3</span>
-              <span className="font-medium text-gray-800">Upload Recipients</span>
+              <span className="font-medium text-gray-800">{t("stepUploadRecipients")}</span>
               <button onClick={downloadExample} className="ml-auto flex items-center gap-1 text-xs text-brand-600 hover:underline">
-                <Download size={11} /> Example CSV
+                <Download size={11} /> {t("exampleCsv")}
               </button>
             </div>
             <div className="space-y-3">
-              <div
-                onClick={() => fileRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-colors"
-              >
+              <div onClick={() => fileRef.current?.click()}
+                className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-colors">
                 <Upload size={24} className="mx-auto mb-2 text-gray-400" />
-                <p className="text-sm font-medium text-gray-700">Click to upload CSV</p>
-                <p className="text-xs text-gray-400 mt-1">One phone number per row. International format (e.g. 447700900000)</p>
+                <p className="text-sm font-medium text-gray-700">{t("clickToUploadCsv")}</p>
+                <p className="text-xs text-gray-400 mt-1">{t("csvFormatHint")}</p>
                 <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
               </div>
-              <div className="text-center text-xs text-gray-400">or paste numbers below</div>
-              <textarea
-                value={rawInput}
-                onChange={(e) => handleRawInput(e.target.value)}
-                placeholder="447700900000&#10;447700900001&#10;447700900002"
-                rows={5}
-                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
+              <div className="text-center text-xs text-gray-400">{t("orPasteNumbers")}</div>
+              <textarea value={rawInput} onChange={(e) => handleRawInput(e.target.value)}
+                placeholder={"447700900000\n447700900001\n447700900002"} rows={5}
+                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
               {phones.length > 0 && (
                 <div className="flex items-center gap-2 text-sm">
                   <CheckCircle size={15} className="text-green-500" />
-                  <span className="text-green-700 font-medium">{phones.length} unique numbers ready</span>
+                  <span className="text-green-700 font-medium">{t("uniqueNumbersReady", phones.length)}</span>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* Step 4: Send */}
+        {/* Step 4 */}
         {credId && templateId && phones.length > 0 && (
           <div className="border-t border-gray-100 pt-4">
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 mb-4">
-              ⚠️ This will send the <strong>{selectedTemplate?.name}</strong> template to <strong>{phones.length} numbers</strong>. WhatsApp charges per message. Make sure your recipients have opted in.
+              {t("bulkSendWarning", selectedTemplate?.name ?? "", phones.length)}
             </div>
-            <button
-              onClick={handleSend}
-              disabled={sending}
-              className="w-full flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-medium py-3 rounded-xl text-sm transition-colors disabled:opacity-60"
-            >
+            <button onClick={handleSend} disabled={sending}
+              className="w-full flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-medium py-3 rounded-xl text-sm transition-colors disabled:opacity-60">
               <Send size={16} />
-              {sending ? "Starting bulk send…" : `Send to ${phones.length} recipients`}
+              {sending ? t("startingBulkSend") : t("sendToRecipients", phones.length)}
             </button>
           </div>
         )}
       </div>
 
-      {/* Job history */}
       {jobs.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-xl">
           <div className="px-5 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900 text-sm">Send History</h2>
+            <h2 className="font-semibold text-gray-900 text-sm">{t("sendHistory")}</h2>
           </div>
           <div className="divide-y divide-gray-100">
-            {jobs.map((job) => (
-              <JobRow key={job.id} job={job} />
-            ))}
+            {jobs.map((job) => <JobRow key={job.id} job={job} />)}
           </div>
         </div>
       )}

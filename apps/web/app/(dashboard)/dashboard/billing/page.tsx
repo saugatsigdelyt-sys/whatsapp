@@ -3,40 +3,16 @@
 import { useState } from "react";
 import useSWR from "swr";
 import api from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import {
   Wallet, TrendingUp, CreditCard, ArrowDownLeft,
-  CheckCircle, Clock, Copy, ExternalLink, Loader2, QrCode, ChevronDown,
+  CheckCircle, Clock, Copy, ExternalLink, Loader2, QrCode,
 } from "lucide-react";
 
-type Tx = {
-  id: string;
-  type: string;
-  amount: number;
-  balanceAfter: number;
-  description: string | null;
-  createdAt: string;
-};
-
-type BalanceData = {
-  balance: number;
-  planExpiresAt: string | null;
-  tier: string;
-  transactions: Tx[];
-};
-
-type Prices = {
-  STANDARD: number;
-  PREMIUM: number;
-  PLATINUM: number;
-  minDeposit: number;
-};
-
-type SavedAddress = {
-  id: string;
-  network: string;
-  address: string;
-  createdAt: string;
-};
+type Tx = { id: string; type: string; amount: number; balanceAfter: number; description: string | null; createdAt: string; };
+type BalanceData = { balance: number; planExpiresAt: string | null; tier: string; transactions: Tx[]; };
+type Prices = { STANDARD: number; PREMIUM: number; PLATINUM: number; minDeposit: number; };
+type SavedAddress = { id: string; network: string; address: string; createdAt: string; };
 
 const NETWORKS: { id: string; label: string; coin: string }[] = [
   { id: "TRX", label: "TRON (TRC-20)", coin: "USDT / USDC / TRX" },
@@ -47,10 +23,8 @@ const NETWORKS: { id: string; label: string; coin: string }[] = [
 ];
 
 const TIER_COLORS: Record<string, string> = {
-  FREE: "bg-gray-100 text-gray-700",
-  STANDARD: "bg-blue-100 text-blue-700",
-  PREMIUM: "bg-purple-100 text-purple-700",
-  PLATINUM: "bg-yellow-100 text-yellow-700",
+  FREE: "bg-gray-100 text-gray-700", STANDARD: "bg-blue-100 text-blue-700",
+  PREMIUM: "bg-purple-100 text-purple-700", PLATINUM: "bg-yellow-100 text-yellow-700",
 };
 
 const TX_ICONS: Record<string, React.ReactNode> = {
@@ -76,24 +50,25 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function QrModal({ address, network, onClose }: { address: string; network: string; onClose: () => void }) {
+  const t = useT();
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(address)}`;
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xs text-center" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-bold text-gray-900 mb-1">Scan to Send</h3>
-        <p className="text-sm text-gray-500 mb-4">{network} Network</p>
+        <h3 className="font-bold text-gray-900 mb-1">{t("scanToSend")}</h3>
+        <p className="text-sm text-gray-500 mb-4">{network} {t("networkLabel")}</p>
         <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-center mb-4">
           <img src={qrUrl} alt="QR Code" width={220} height={220} className="rounded" />
         </div>
         <div className="bg-gray-100 rounded-lg px-3 py-2 mb-4">
-          <p className="text-xs text-gray-500 mb-1 font-medium">Address</p>
+          <p className="text-xs text-gray-500 mb-1 font-medium">{t("addressLabel")}</p>
           <div className="flex items-center justify-center gap-1">
             <code className="text-xs text-gray-800 font-mono break-all">{address}</code>
             <CopyButton text={address} />
           </div>
         </div>
         <button onClick={onClose} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium transition-colors">
-          Close
+          {t("close")}
         </button>
       </div>
     </div>
@@ -101,6 +76,7 @@ function QrModal({ address, network, onClose }: { address: string; network: stri
 }
 
 function AddressCard({ saved, networkInfo }: { saved: SavedAddress; networkInfo?: { label: string; coin: string } }) {
+  const t = useT();
   const [showQr, setShowQr] = useState(false);
   const label = networkInfo?.label ?? saved.network;
   const coin = networkInfo?.coin ?? "";
@@ -111,63 +87,47 @@ function AddressCard({ saved, networkInfo }: { saved: SavedAddress; networkInfo?
           <span className="text-sm font-semibold text-gray-800">{label}</span>
           {coin && <span className="ml-2 text-xs text-gray-400">{coin}</span>}
         </div>
-        <button
-          onClick={() => setShowQr(true)}
-          className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 font-medium"
-        >
-          <QrCode size={14} /> QR Code
+        <button onClick={() => setShowQr(true)} className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 font-medium">
+          <QrCode size={14} /> {t("qrCode")}
         </button>
       </div>
       <div className="flex items-center bg-white border border-gray-200 rounded-lg px-3 py-2">
         <code className="text-xs text-gray-800 font-mono break-all flex-1">{saved.address}</code>
         <CopyButton text={saved.address} />
       </div>
-      <p className="text-xs text-gray-400 mt-2">
-        Permanent address · Any deposit auto-credits your balance
-      </p>
+      <p className="text-xs text-gray-400 mt-2">{t("permanentAddressNote")}</p>
       {showQr && <QrModal address={saved.address} network={label} onClose={() => setShowQr(false)} />}
     </div>
   );
 }
 
 export default function BillingPage() {
+  const t = useT();
   const { data: balData, mutate: mutateBalance } = useSWR<{ success: boolean; data: BalanceData }>(
-    "/api/payments/balance",
-    (url: string) => api.get(url).then((r) => r.data)
+    "/api/payments/balance", (url: string) => api.get(url).then((r) => r.data)
   );
   const { data: pricesData } = useSWR<{ success: boolean; data: Prices }>(
-    "/api/payments/prices",
-    (url: string) => api.get(url).then((r) => r.data)
+    "/api/payments/prices", (url: string) => api.get(url).then((r) => r.data)
   );
   const { data: addressesData, mutate: mutateAddresses } = useSWR<{ success: boolean; data: SavedAddress[] }>(
-    "/api/payments/addresses",
-    (url: string) => api.get(url).then((r) => r.data)
+    "/api/payments/addresses", (url: string) => api.get(url).then((r) => r.data)
   );
 
   const balance = balData?.data ?? { balance: 0, planExpiresAt: null, tier: "FREE", transactions: [] };
   const prices = pricesData?.data ?? { STANDARD: 20, PREMIUM: 50, PLATINUM: 100, minDeposit: 5 };
   const savedAddresses: SavedAddress[] = addressesData?.data ?? [];
 
-  // Networks that already have an address
   const generatedNetworks = new Set(savedAddresses.map((a) => a.network));
   const availableNetworks = NETWORKS.filter((n) => !generatedNetworks.has(n.id));
 
-  // Invoice state
   const [invoiceAmount, setInvoiceAmount] = useState(10);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [payLink, setPayLink] = useState<string | null>(null);
-
-  // Static address state
   const [selectedNetwork, setSelectedNetwork] = useState<string>("");
   const [addrLoading, setAddrLoading] = useState(false);
   const [addrError, setAddrError] = useState<string | null>(null);
-
-  // Plan purchase state
   const [planLoading, setPlanLoading] = useState<string>("");
   const [planMsg, setPlanMsg] = useState<{ text: string; ok: boolean } | null>(null);
-
-  // QR for selected existing network
-  const [showQrFor, setShowQrFor] = useState<SavedAddress | null>(null);
 
   async function handleInvoice() {
     setInvoiceLoading(true);
@@ -177,9 +137,7 @@ export default function BillingPage() {
       setPayLink(res.data.data.payLink);
     } catch (err: any) {
       alert(err?.response?.data?.error ?? "Failed to create invoice");
-    } finally {
-      setInvoiceLoading(false);
-    }
+    } finally { setInvoiceLoading(false); }
   }
 
   async function handleGetAddress() {
@@ -192,13 +150,11 @@ export default function BillingPage() {
       setSelectedNetwork("");
     } catch (err: any) {
       setAddrError(err?.response?.data?.error ?? "Failed to get address");
-    } finally {
-      setAddrLoading(false);
-    }
+    } finally { setAddrLoading(false); }
   }
 
   async function handlePlanPurchase(tier: string) {
-    if (!confirm(`Purchase ${tier} plan for $${(prices as any)[tier]} from your balance?`)) return;
+    if (!confirm(t("purchasePlanConfirm", tier, (prices as any)[tier]))) return;
     setPlanLoading(tier);
     setPlanMsg(null);
     try {
@@ -207,25 +163,23 @@ export default function BillingPage() {
       mutateBalance();
     } catch (err: any) {
       setPlanMsg({ text: err?.response?.data?.error ?? "Purchase failed", ok: false });
-    } finally {
-      setPlanLoading("");
-    }
+    } finally { setPlanLoading(""); }
   }
 
   const plans = [
     {
       tier: "STANDARD", label: "Standard", price: prices.STANDARD,
-      features: ["3 WA Accounts", "5 Team members", "All messaging features"],
+      features: [t("planFeature3WA"), t("planFeature5Team"), t("planFeatureAllMsg")],
       color: "border-blue-300 bg-blue-50", btnColor: "bg-blue-600 hover:bg-blue-700",
     },
     {
       tier: "PREMIUM", label: "Premium", price: prices.PREMIUM,
-      features: ["10 WA Accounts", "20 Team members", "Priority support"],
+      features: [t("planFeature10WA"), t("planFeature20Team"), t("planFeaturePriority")],
       color: "border-purple-300 bg-purple-50", btnColor: "bg-purple-600 hover:bg-purple-700", highlight: true,
     },
     {
       tier: "PLATINUM", label: "Platinum", price: prices.PLATINUM,
-      features: ["50 WA Accounts", "100 Team members", "Dedicated support"],
+      features: [t("planFeature50WA"), t("planFeature100Team"), t("planFeatureDedicated")],
       color: "border-yellow-300 bg-yellow-50", btnColor: "bg-yellow-600 hover:bg-yellow-700",
     },
   ];
@@ -233,8 +187,8 @@ export default function BillingPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Billing & Plans</h1>
-        <p className="text-gray-500 mt-1">Manage your balance and subscription</p>
+        <h1 className="text-2xl font-bold text-gray-900">{t("billingTitle")}</h1>
+        <p className="text-gray-500 mt-1">{t("billingSubtitle")}</p>
       </div>
 
       {/* Balance Cards */}
@@ -245,94 +199,85 @@ export default function BillingPage() {
               <Wallet size={20} className="text-green-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500">Current Balance</p>
+              <p className="text-xs text-gray-500">{t("currentBalance")}</p>
               <p className="text-2xl font-bold text-gray-900">${balance.balance.toFixed(2)}</p>
             </div>
           </div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <p className="text-xs text-gray-500 mb-1">Current Plan</p>
+          <p className="text-xs text-gray-500 mb-1">{t("currentPlanLabel")}</p>
           <span className={`px-2.5 py-1 rounded-full text-sm font-semibold ${TIER_COLORS[balance.tier] ?? TIER_COLORS.FREE}`}>
             {balance.tier}
           </span>
           {balance.planExpiresAt && (
             <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-              <Clock size={12} /> Expires {new Date(balance.planExpiresAt).toLocaleDateString()}
+              <Clock size={12} /> {t("expiresLabel")} {new Date(balance.planExpiresAt).toLocaleDateString()}
             </p>
           )}
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <p className="text-xs text-gray-500 mb-1">Payment</p>
-          <p className="text-sm font-medium text-gray-700">Crypto via OxaPay</p>
-          <p className="text-xs text-gray-400 mt-1">BTC · ETH · USDT · LTC · BNB + more</p>
+          <p className="text-xs text-gray-500 mb-1">{t("paymentLabel")}</p>
+          <p className="text-sm font-medium text-gray-700">{t("cryptoViaOxapay")}</p>
+          <p className="text-xs text-gray-400 mt-1">{t("cryptoCoins")}</p>
         </div>
       </div>
 
-      {/* Top Up Section */}
+      {/* Top Up */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Invoice */}
         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
           <h2 className="font-semibold text-gray-800 mb-1 flex items-center gap-2">
-            <CreditCard size={18} /> Pay by Invoice
+            <CreditCard size={18} /> {t("payByInvoice")}
           </h2>
-          <p className="text-xs text-gray-400 mb-4">One-time payment link — choose any crypto at checkout</p>
+          <p className="text-xs text-gray-400 mb-4">{t("invoiceNote")}</p>
           <div className="flex gap-2 mb-4">
             <div className="flex-1">
-              <label className="text-xs text-gray-500 mb-1 block">Amount (USD, min ${prices.minDeposit})</label>
-              <input
-                type="number" min={prices.minDeposit} step={1} value={invoiceAmount}
+              <label className="text-xs text-gray-500 mb-1 block">{t("amountLabel", prices.minDeposit)}</label>
+              <input type="number" min={prices.minDeposit} step={1} value={invoiceAmount}
                 onChange={(e) => setInvoiceAmount(Number(e.target.value))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none"
-              />
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none" />
             </div>
             <div className="flex items-end">
               <button onClick={handleInvoice} disabled={invoiceLoading}
                 className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2">
                 {invoiceLoading ? <Loader2 size={14} className="animate-spin" /> : null}
-                Generate
+                {t("generate")}
               </button>
             </div>
           </div>
           {payLink && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
-              <span className="text-sm text-green-700 font-medium">Payment link ready!</span>
+              <span className="text-sm text-green-700 font-medium">{t("paymentLinkReady")}</span>
               <a href={payLink} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">
-                Pay now <ExternalLink size={12} />
+                {t("payNow")} <ExternalLink size={12} />
               </a>
             </div>
           )}
         </div>
 
-        {/* Static Address — generate new */}
         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
           <h2 className="font-semibold text-gray-800 mb-1 flex items-center gap-2">
-            <ArrowDownLeft size={18} /> Permanent Deposit Address
+            <ArrowDownLeft size={18} /> {t("permanentDepositAddress")}
           </h2>
-          <p className="text-xs text-gray-400 mb-4">Set once — any deposit auto-credits your balance forever</p>
-
+          <p className="text-xs text-gray-400 mb-4">{t("permanentDepositNote")}</p>
           {availableNetworks.length > 0 ? (
             <>
               <div className="flex gap-2">
                 <select value={selectedNetwork} onChange={(e) => { setSelectedNetwork(e.target.value); setAddrError(null); }}
                   className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
-                  <option value="">Select network to generate…</option>
-                  {availableNetworks.map((n) => (
-                    <option key={n.id} value={n.id}>{n.label} — {n.coin}</option>
-                  ))}
+                  <option value="">{t("selectNetworkToGenerate")}</option>
+                  {availableNetworks.map((n) => <option key={n.id} value={n.id}>{n.label} — {n.coin}</option>)}
                 </select>
                 <button onClick={handleGetAddress} disabled={addrLoading || !selectedNetwork}
                   className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2">
                   {addrLoading ? <Loader2 size={14} className="animate-spin" /> : null}
-                  Generate
+                  {t("generate")}
                 </button>
               </div>
-              {addrError && (
-                <p className="text-xs text-red-600 mt-2">{addrError}</p>
-              )}
+              {addrError && <p className="text-xs text-red-600 mt-2">{addrError}</p>}
             </>
           ) : (
-            <p className="text-sm text-gray-500">All supported networks have been generated below.</p>
+            <p className="text-sm text-gray-500">{t("allNetworksGenerated")}</p>
           )}
         </div>
       </div>
@@ -341,7 +286,7 @@ export default function BillingPage() {
       {savedAddresses.length > 0 && (
         <div>
           <h2 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-            <QrCode size={18} /> Your Deposit Addresses
+            <QrCode size={18} /> {t("yourDepositAddresses")}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {savedAddresses.map((addr) => {
@@ -354,8 +299,8 @@ export default function BillingPage() {
 
       {/* Plans */}
       <div>
-        <h2 className="font-semibold text-gray-800 mb-1">Upgrade Plan</h2>
-        <p className="text-sm text-gray-500 mb-4">Billed monthly from your balance</p>
+        <h2 className="font-semibold text-gray-800 mb-1">{t("upgradePlanTitle")}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t("billedMonthly")}</p>
         {planMsg && (
           <div className={`mb-4 p-3 rounded-lg text-sm font-medium border ${planMsg.ok ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>
             {planMsg.text}
@@ -367,12 +312,12 @@ export default function BillingPage() {
             return (
               <div key={plan.tier} className={`relative rounded-xl border-2 p-5 ${plan.color} ${(plan as any).highlight ? "ring-2 ring-purple-300" : ""}`}>
                 {(plan as any).highlight && (
-                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-xs px-3 py-0.5 rounded-full font-medium">Popular</div>
+                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-xs px-3 py-0.5 rounded-full font-medium">{t("popularBadge")}</div>
                 )}
                 <h3 className="font-bold text-gray-800 text-lg">{plan.label}</h3>
                 <div className="my-2">
                   <span className="text-3xl font-bold text-gray-900">${plan.price}</span>
-                  <span className="text-gray-500 text-sm">/mo</span>
+                  <span className="text-gray-500 text-sm">{t("perMonth")}</span>
                 </div>
                 <ul className="space-y-1 mb-4">
                   {plan.features.map((f) => (
@@ -382,13 +327,13 @@ export default function BillingPage() {
                   ))}
                 </ul>
                 {isCurrent ? (
-                  <div className="w-full py-2 rounded-lg text-center text-sm font-medium bg-white text-gray-500 border border-gray-200">Current Plan</div>
+                  <div className="w-full py-2 rounded-lg text-center text-sm font-medium bg-white text-gray-500 border border-gray-200">{t("currentPlanBtn")}</div>
                 ) : (
                   <button onClick={() => handlePlanPurchase(plan.tier)}
                     disabled={!!planLoading || balance.balance < plan.price}
                     className={`w-full py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-50 ${plan.btnColor} flex items-center justify-center gap-2`}>
                     {planLoading === plan.tier && <Loader2 size={14} className="animate-spin" />}
-                    {balance.balance < plan.price ? `Need $${(plan.price - balance.balance).toFixed(2)} more` : `Get ${plan.label}`}
+                    {balance.balance < plan.price ? t("needMoreFunds", plan.price - balance.balance) : t("getPlan", plan.label)}
                   </button>
                 )}
               </div>
@@ -400,10 +345,10 @@ export default function BillingPage() {
       {/* Transaction History */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
         <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800">Transaction History</h2>
+          <h2 className="font-semibold text-gray-800">{t("transactionHistory")}</h2>
         </div>
         {balance.transactions.length === 0 ? (
-          <div className="px-6 py-10 text-center text-gray-400 text-sm">No transactions yet</div>
+          <div className="px-6 py-10 text-center text-gray-400 text-sm">{t("noTransactionsYet")}</div>
         ) : (
           <div className="divide-y divide-gray-50">
             {balance.transactions.map((tx) => (
@@ -421,7 +366,7 @@ export default function BillingPage() {
                   <p className={`text-sm font-semibold ${tx.amount >= 0 ? "text-green-600" : "text-red-600"}`}>
                     {tx.amount >= 0 ? "+" : ""}${tx.amount.toFixed(2)}
                   </p>
-                  <p className="text-xs text-gray-400">Balance: ${tx.balanceAfter.toFixed(2)}</p>
+                  <p className="text-xs text-gray-400">{t("balanceLabel")} ${tx.balanceAfter.toFixed(2)}</p>
                 </div>
               </div>
             ))}

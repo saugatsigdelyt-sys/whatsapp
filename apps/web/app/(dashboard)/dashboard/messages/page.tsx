@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import api from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { ArrowDownLeft, ArrowUpRight, Search } from "lucide-react";
 
 function fetcher(url: string) {
@@ -10,6 +11,7 @@ function fetcher(url: string) {
 }
 
 export default function MessagesPage() {
+  const t = useT();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -26,14 +28,14 @@ export default function MessagesPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Messages</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} total messages</p>
+          <h1 className="text-xl font-semibold text-gray-900">{t("messagesTitle")}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t("messagesSubtitle", total)}</p>
         </div>
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search messages..."
+            placeholder={t("searchMessages")}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -43,21 +45,21 @@ export default function MessagesPage() {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-gray-400">Loading messages...</div>
+          <div className="p-8 text-center text-sm text-gray-400">{t("loadingMessages")}</div>
         ) : messages.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400">
-            No messages yet. They will appear here once your webhook is set up.
+            {t("noMessagesYet")}
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Direction</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">From</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">To</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Message</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Time</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{t("colDirection")}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{t("colFrom")}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{t("colTo")}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{t("colMessage")}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{t("colStatus")}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">{t("colTime")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -66,11 +68,11 @@ export default function MessagesPage() {
                   <td className="px-4 py-3">
                     {msg.direction === "INBOUND" ? (
                       <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-2 py-0.5 rounded-full text-xs font-medium">
-                        <ArrowDownLeft size={11} /> In
+                        <ArrowDownLeft size={11} /> {t("dirIn")}
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full text-xs font-medium">
-                        <ArrowUpRight size={11} /> Out
+                        <ArrowUpRight size={11} /> {t("dirOut")}
                       </span>
                     )}
                   </td>
@@ -94,10 +96,10 @@ export default function MessagesPage() {
 
       {total > 50 && (
         <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>Page {page}</span>
+          <span>{t("page")} {page}</span>
           <div className="flex gap-2">
-            <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50">Previous</button>
-            <button disabled={!data?.hasMore} onClick={() => setPage((p) => p + 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50">Next</button>
+            <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50">{t("previous")}</button>
+            <button disabled={!data?.hasMore} onClick={() => setPage((p) => p + 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50">{t("next")}</button>
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import api from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { UserPlus, Trash2, ChevronUp, X, CheckCircle, AlertCircle, Shield, Eye, Crown } from "lucide-react";
 
 function fetcher(url: string) { return api.get(url).then((r) => r.data); }
@@ -14,13 +15,8 @@ interface TeamMember {
   waAccounts: WaAccount[];
 }
 
-const ROLE_BADGES: Record<string, { label: string; icon: typeof Crown; className: string }> = {
-  OWNER:  { label: "Owner",  icon: Crown,  className: "bg-yellow-50 text-yellow-700 border border-yellow-200" },
-  ADMIN:  { label: "Admin",  icon: Shield, className: "bg-blue-50 text-blue-700 border border-blue-200" },
-  VIEWER: { label: "Viewer", icon: Eye,    className: "bg-gray-50 text-gray-600 border border-gray-200" },
-};
-
 export default function TeamPage() {
+  const t = useT();
   const { data: membersData, isLoading } = useSWR("/api/team", fetcher);
   const { data: accountsData } = useSWR("/api/accounts", fetcher);
   const { data: subData } = useSWR("/api/subscription", fetcher);
@@ -38,6 +34,13 @@ export default function TeamPage() {
   const [accessLoading, setAccessLoading] = useState(false);
 
   const atLimit = sub ? !sub.canAddTeamMember : false;
+
+  // Role badge config using translation keys
+  const ROLE_BADGES: Record<string, { labelKey: string; icon: typeof Crown; className: string }> = {
+    OWNER:  { labelKey: "roleOwner",  icon: Crown,  className: "bg-yellow-50 text-yellow-700 border border-yellow-200" },
+    ADMIN:  { labelKey: "roleAdmin",  icon: Shield, className: "bg-blue-50 text-blue-700 border border-blue-200" },
+    VIEWER: { labelKey: "roleViewer", icon: Eye,    className: "bg-gray-50 text-gray-600 border border-gray-200" },
+  };
 
   function toggleAccount(credId: string, selected: string[], setSelected: (v: string[]) => void) {
     setSelected(selected.includes(credId) ? selected.filter((id) => id !== credId) : [...selected, credId]);
@@ -60,12 +63,12 @@ export default function TeamPage() {
   }
 
   async function handleRemove(memberId: string, name: string) {
-    if (!confirm(`Remove ${name} from your team?`)) return;
+    if (!confirm(t("confirmRemoveMember", name))) return;
     try {
       await api.delete(`/api/team/${memberId}`);
       mutate("/api/team");
       mutate("/api/subscription");
-    } catch (err: any) { alert(err.response?.data?.error ?? "Failed to remove member"); }
+    } catch (err: any) { alert(err.response?.data?.error ?? t("failedToRemoveMember")); }
   }
 
   async function saveAccess(memberId: string) {
@@ -74,24 +77,25 @@ export default function TeamPage() {
       await api.put(`/api/team/${memberId}/access`, { waCredentialIds: accessSelection });
       mutate("/api/team");
       setEditingAccessId(null);
-    } catch { alert("Failed to update access"); }
+    } catch { alert(t("failedToUpdateAccess")); }
     finally { setAccessLoading(false); }
   }
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Team Members</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Manage who can access your WhatsApp accounts</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t("teamTitle")}</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{t("teamSubtitle")}</p>
       </div>
 
       {sub && (
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-600">
-              <span className="font-semibold text-gray-900">{sub.usage.teamMembers}</span> / {sub.limits.maxTeamMembers === Infinity ? "∞" : sub.limits.maxTeamMembers} team members
+              <span className="font-semibold text-gray-900">{sub.usage.teamMembers}</span>{" "}
+              {t("teamUsage", sub.usage.teamMembers, sub.limits.maxTeamMembers === Infinity ? "∞" : String(sub.limits.maxTeamMembers))}
             </span>
-            <a href="/pricing" className="text-xs text-brand-600 font-medium hover:underline flex items-center gap-1"><ChevronUp size={12} /> Upgrade for more seats</a>
+            <a href="/pricing" className="text-xs text-brand-600 font-medium hover:underline flex items-center gap-1"><ChevronUp size={12} /> {t("upgradeForMoreSeats")}</a>
           </div>
         </div>
       )}
@@ -104,7 +108,7 @@ export default function TeamPage() {
         </div>
       )}
 
-      {isLoading ? <div className="text-sm text-gray-400">Loading team...</div> : (
+      {isLoading ? <div className="text-sm text-gray-400">{t("loadingTeam")}</div> : (
         <div className="space-y-3">
           {members.map((member) => {
             const badge = ROLE_BADGES[member.role];
@@ -118,15 +122,20 @@ export default function TeamPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-900 text-sm">{member.user.name ?? "—"}{member.isCurrentUser && <span className="text-xs text-gray-400 ml-1">(you)</span>}</span>
-                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${badge.className}`}><BadgeIcon size={10} /> {badge.label}</span>
+                      <span className="font-medium text-gray-900 text-sm">
+                        {member.user.name ?? "—"}
+                        {member.isCurrentUser && <span className="text-xs text-gray-400 ml-1">{t("youLabel")}</span>}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${badge.className}`}>
+                        <BadgeIcon size={10} /> {t(badge.labelKey)}
+                      </span>
                     </div>
                     <div className="text-xs text-gray-400 mt-0.5">{member.user.email}</div>
                     {member.role !== "OWNER" && (
                       <div className="mt-3">
                         {isEditingAccess ? (
                           <div>
-                            <p className="text-xs font-medium text-gray-600 mb-2">Select accounts this member can access:</p>
+                            <p className="text-xs font-medium text-gray-600 mb-2">{t("selectAccountsForMember")}</p>
                             <div className="grid grid-cols-2 gap-2 mb-3">
                               {allAccounts.map((acc) => (
                                 <label key={acc.id} className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border cursor-pointer ${accessSelection.includes(acc.id) ? "border-brand-400 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600"}`}>
@@ -136,21 +145,21 @@ export default function TeamPage() {
                               ))}
                             </div>
                             <div className="flex gap-2">
-                              <button onClick={() => saveAccess(member.id)} disabled={accessLoading} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-60">{accessLoading ? "Saving..." : "Save access"}</button>
-                              <button onClick={() => setEditingAccessId(null)} className="text-xs text-gray-500 px-3 py-1.5 rounded-lg border border-gray-200">Cancel</button>
+                              <button onClick={() => saveAccess(member.id)} disabled={accessLoading} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-60">{accessLoading ? t("savingAccess") : t("saveAccess")}</button>
+                              <button onClick={() => setEditingAccessId(null)} className="text-xs text-gray-500 px-3 py-1.5 rounded-lg border border-gray-200">{t("cancel")}</button>
                             </div>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 flex-wrap">
                             {member.waAccounts.length > 0 ? member.waAccounts.map((acc) => (
                               <span key={acc.id} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{acc.name}</span>
-                            )) : <span className="text-xs text-gray-400 italic">No account access assigned</span>}
-                            <button onClick={() => { setEditingAccessId(member.id); setAccessSelection(member.waAccounts.map((a) => a.id)); }} className="text-xs text-brand-600 hover:underline font-medium">Edit access</button>
+                            )) : <span className="text-xs text-gray-400 italic">{t("noAccountAccessAssigned")}</span>}
+                            <button onClick={() => { setEditingAccessId(member.id); setAccessSelection(member.waAccounts.map((a) => a.id)); }} className="text-xs text-brand-600 hover:underline font-medium">{t("editAccess")}</button>
                           </div>
                         )}
                       </div>
                     )}
-                    {member.role === "OWNER" && <div className="mt-2 text-xs text-gray-400 italic">Owner has access to all accounts</div>}
+                    {member.role === "OWNER" && <div className="mt-2 text-xs text-gray-400 italic">{t("ownerHasAllAccess")}</div>}
                   </div>
                   {!member.isCurrentUser && member.role !== "OWNER" && (
                     <button onClick={() => handleRemove(member.id, member.user.name ?? member.user.email)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0" title="Remove member"><Trash2 size={13} /></button>
@@ -164,44 +173,44 @@ export default function TeamPage() {
 
       {atLimit ? (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-sm text-orange-800 flex items-center justify-between">
-          <span><strong>Seat limit reached.</strong> Upgrade to add more team members.</span>
-          <a href="/pricing" className="ml-4 shrink-0 bg-orange-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Upgrade →</a>
+          <span><strong>{t("seatLimitReached")}</strong> {t("seatLimitMsg")}</span>
+          <a href="/pricing" className="ml-4 shrink-0 bg-orange-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">{t("upgradeBtn")}</a>
         </div>
       ) : (
         <button onClick={() => setShowInvite((v) => !v)} className="flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-4 py-2.5 rounded-xl transition-colors border border-brand-100">
-          <UserPlus size={15} />{showInvite ? "Cancel" : "Add team member"}
+          <UserPlus size={15} />{showInvite ? t("cancel") : t("addTeamMember")}
         </button>
       )}
 
       {showInvite && !atLimit && (
         <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="font-semibold text-gray-900 mb-4">Invite a team member</h2>
+          <h2 className="font-semibold text-gray-900 mb-4">{t("inviteTeamMember")}</h2>
           <form onSubmit={handleInvite} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
-                <input value={inviteForm.name} onChange={(e) => setInviteForm((f) => ({ ...f, name: e.target.value }))} required placeholder="Jane Smith" className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t("fieldFullName")}</label>
+                <input value={inviteForm.name} onChange={(e) => setInviteForm((f) => ({ ...f, name: e.target.value }))} required placeholder={t("placeholderFullName")} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-                <input type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} required placeholder="jane@company.com" className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t("fieldEmail")}</label>
+                <input type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} required placeholder={t("placeholderEmail")} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Temporary Password</label>
-                <input type="password" value={inviteForm.password} onChange={(e) => setInviteForm((f) => ({ ...f, password: e.target.value }))} required minLength={8} placeholder="Min. 8 characters" className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t("fieldTempPassword")}</label>
+                <input type="password" value={inviteForm.password} onChange={(e) => setInviteForm((f) => ({ ...f, password: e.target.value }))} required minLength={8} placeholder={t("placeholderMinChars")} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t("fieldRole")}</label>
                 <select value={inviteForm.role} onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as "ADMIN" | "VIEWER" }))} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
-                  <option value="VIEWER">Viewer — read only</option>
-                  <option value="ADMIN">Admin — can manage</option>
+                  <option value="VIEWER">{t("optionViewerReadOnly")}</option>
+                  <option value="ADMIN">{t("optionAdminCanManage")}</option>
                 </select>
               </div>
             </div>
             <button type="submit" disabled={inviteLoading} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-60">
-              {inviteLoading ? "Adding member..." : "Add team member"}
+              {inviteLoading ? t("addingMember") : t("addTeamMember")}
             </button>
           </form>
         </div>

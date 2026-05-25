@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import api from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { CheckCircle, AlertCircle, Webhook } from "lucide-react";
 
 function fetcher(url: string) {
@@ -24,6 +25,7 @@ const WEBHOOK_FIELDS = [
 ];
 
 export default function WebhooksPage() {
+  const t = useT();
   const { data: sub } = useSWR("/api/webhooks", fetcher);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -47,8 +49,8 @@ export default function WebhooksPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Webhooks</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Subscribe to Meta webhook events for your WhatsApp account</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t("webhooksTitle")}</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{t("webhooksSubtitle")}</p>
       </div>
 
       <div className={`rounded-xl border p-4 flex items-start gap-3 ${isRegistered ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
@@ -57,12 +59,10 @@ export default function WebhooksPage() {
           : <Webhook size={17} className="text-amber-600 mt-0.5 shrink-0" />}
         <div className="text-sm">
           <strong className={isRegistered ? "text-green-800" : "text-amber-800"}>
-            {isRegistered ? "Webhook registered with Meta" : "Webhook not yet registered"}
+            {isRegistered ? t("webhookRegistered") : t("webhookNotRegistered")}
           </strong>
           <p className={`mt-0.5 ${isRegistered ? "text-green-700" : "text-amber-700"}`}>
-            {isRegistered
-              ? "All 11 webhook fields are subscribed. Meta will POST events to your receiver."
-              : "Register your webhook to start receiving WhatsApp events. Make sure your credentials are imported first."}
+            {isRegistered ? t("webhookRegisteredMsg") : t("webhookNotRegisteredMsg")}
           </p>
         </div>
       </div>
@@ -75,12 +75,12 @@ export default function WebhooksPage() {
       )}
 
       <button onClick={registerWebhook} disabled={loading} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-60">
-        {loading ? "Registering..." : isRegistered ? "Re-register webhook" : "Register webhook with Meta"}
+        {loading ? t("registeringWebhook") : isRegistered ? t("reRegisterWebhook") : t("registerWebhookWithMeta")}
       </button>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-          <h2 className="text-sm font-medium text-gray-700">Subscribed Webhook Fields (11)</h2>
+          <h2 className="text-sm font-medium text-gray-700">{t("subscribedWebhookFields")}</h2>
         </div>
         <div className="divide-y divide-gray-100">
           {WEBHOOK_FIELDS.map((field) => {
@@ -92,7 +92,7 @@ export default function WebhooksPage() {
                   <p className="text-xs text-gray-500 mt-0.5">{field.description}</p>
                 </div>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${subscribed ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                  {subscribed ? "Active" : "Inactive"}
+                  {subscribed ? t("active") : t("inactive")}
                 </span>
               </div>
             );

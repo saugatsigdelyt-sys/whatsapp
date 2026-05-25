@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import api from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { Bell } from "lucide-react";
 
 function fetcher(url: string) {
@@ -24,6 +25,7 @@ const FIELD_COLORS: Record<string, string> = {
 };
 
 export default function EventsPage() {
+  const t = useT();
   const [page, setPage] = useState(1);
   const { data, isLoading } = useSWR(`/api/webhooks/events?page=${page}`, fetcher, { refreshInterval: 15000 });
   const events = data?.data ?? [];
@@ -33,16 +35,16 @@ export default function EventsPage() {
       <div className="flex items-center gap-3">
         <Bell size={20} className="text-gray-400" />
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Account Events</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Non-message webhook events from Meta</p>
+          <h1 className="text-xl font-semibold text-gray-900">{t("eventsTitle")}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t("eventsSubtitle")}</p>
         </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-gray-400">Loading events...</div>
+          <div className="p-8 text-center text-sm text-gray-400">{t("loadingEvents")}</div>
         ) : events.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">No events yet. Register your webhook to start receiving account events.</div>
+          <div className="p-8 text-center text-sm text-gray-400">{t("noEventsYet")}</div>
         ) : (
           <div className="divide-y divide-gray-100">
             {events.map((event: any) => (
@@ -64,10 +66,10 @@ export default function EventsPage() {
 
       {(data?.total ?? 0) > 30 && (
         <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>Page {page} of {Math.ceil((data?.total ?? 0) / 30)}</span>
+          <span>{t("pageOf", page, Math.ceil((data?.total ?? 0) / 30))}</span>
           <div className="flex gap-2">
-            <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40">Previous</button>
-            <button disabled={!data?.hasMore} onClick={() => setPage((p) => p + 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40">Next</button>
+            <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40">{t("previous")}</button>
+            <button disabled={!data?.hasMore} onClick={() => setPage((p) => p + 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40">{t("next")}</button>
           </div>
         </div>
       )}
