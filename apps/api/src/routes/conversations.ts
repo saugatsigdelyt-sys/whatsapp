@@ -100,13 +100,33 @@ conversationsRouter.post("/backfill", async (req, res, next) => {
     let created = 0;
     let linked = 0;
 
+    // Build a display-phone → credential map for fallback lookups
+    const credsByDisplayPhone = Object.fromEntries(
+      creds.filter(c => c.displayPhone).map(c => [c.displayPhone!, c])
+    );
+
     for (const msg of orphanMessages) {
       // Find the credential this message belongs to.
-      // toPhone may be either the Meta phoneNumberId or a human-readable displayPhone,
-      // depending on whether a PhoneNumber record existed at the time the message was saved.
-      const cred = credsByPhoneNumberId[msg.toPhone]
-        ?? creds.find(c => c.phoneNumberId === msg.toPhone)
-        ?? creds.find(c => c.displayPhone === msg.toPhone);
+      // toPhone may be stored as a Meta phoneNumberId OR a human-readable displayPhone.
+      // Fallback: follow Message.phoneNumberId → PhoneNumber.phoneNumberId → WaCredential.
+      let cred = credsByPhoneNumberId[msg.toPhone]
+        ?? credsByDisplayPhone[msg.toPhone];
+
+      if (!cred && msg.phoneNumberId) {
+        const phoneRecord = await prisma.phoneNumber.findUnique({
+          where: { id: msg.phoneNumberId },
+          select: { phoneNumberId: true },
+        });
+        if (phoneRecord) {
+          cred = credsByPhoneNumberId[phoneRecord.phoneNumberId];
+        }
+      }
+
+      // Last resort: only one credential for this business — use it
+      if (!cred && creds.length === 1) {
+        cred = creds[0];
+      }
+
       if (!cred) continue;
 
       // Upsert conversation

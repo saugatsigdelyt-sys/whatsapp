@@ -21,10 +21,21 @@ export async function handleMessages(businessId: string, value: unknown): Promis
 }
 
 async function upsertInboundMessage(businessId: string, msg: WhatsAppMessage, phoneNumberId: string): Promise<void> {
-  const [phoneRecord, cred] = await Promise.all([
+  const [phoneRecord, directCred] = await Promise.all([
     prisma.phoneNumber.findFirst({ where: { phoneNumberId, businessId } }),
     prisma.waCredential.findFirst({ where: { phoneNumberId, businessId } }),
   ]);
+
+  // If the direct phoneNumberId lookup failed, try to find the credential by
+  // matching any credential in this business (useful when the stored phoneNumberId
+  // slightly differs from what Meta sends, e.g. after a re-import).
+  let cred = directCred;
+  if (!cred) {
+    cred = await prisma.waCredential.findFirst({ where: { businessId } });
+    if (cred) {
+      console.warn(`[messages] phoneNumberId mismatch — using fallback credential ${cred.id} for businessId ${businessId}`);
+    }
+  }
 
   // Create or update conversation for this contact
   let conversationId: string | null = null;
