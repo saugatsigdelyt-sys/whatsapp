@@ -104,6 +104,7 @@ model WaCredential {
   wabaId            String
   phoneNumberId     String
   webhookRegistered Boolean   @default(false)
+  webhookError      String?
   lastVerifiedAt    DateTime?
   tags              String[]  @default([])
   displayPhone      String?
@@ -115,6 +116,7 @@ model WaCredential {
   conversations   Conversation[]
   templates       MessageTemplate[]
   bulkJobs        BulkSendJob[]
+  phoneNumbers    PhoneNumber[]
   @@unique([businessId, phoneNumberId])
   @@index([businessId])
   @@map("wa_credentials")
@@ -132,15 +134,18 @@ model WaAccountAccess {
 }
 
 model PhoneNumber {
-  id            String  @id @default(cuid())
-  businessId    String
-  phoneNumberId String  @unique
-  displayPhone  String
-  verifiedName  String?
-  qualityRating String?
-  status        String?
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  messages Message[]
+  id             String  @id @default(cuid())
+  businessId     String
+  phoneNumberId  String  @unique
+  displayPhone   String
+  verifiedName   String?
+  qualityRating  String?
+  status         String?
+  healthError    String?
+  waCredentialId String?
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  waCredential WaCredential? @relation(fields: [waCredentialId], references: [id], onDelete: SetNull)
+  messages     Message[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@map("phone_numbers")

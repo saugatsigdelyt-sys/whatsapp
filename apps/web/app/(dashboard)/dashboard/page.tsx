@@ -31,8 +31,8 @@ export default function DashboardPage() {
       {cred === null && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
           <strong>{t("setupRequired")}</strong>{" "}
-          <a href="/dashboard/settings" className="underline font-medium">{t("navSettings")}</a>{" "}
-          {t("setupRequiredMsg", "/dashboard/settings")}
+          <a href="/dashboard/phone-numbers" className="underline font-medium">{t("navPhoneNumbers")}</a>{" "}
+          {t("setupRequiredMsg", "/dashboard/phone-numbers")}
         </div>
       )}
 

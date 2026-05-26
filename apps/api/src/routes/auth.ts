@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import prisma from "../lib/prisma";
 import { generateCaptcha, verifyCaptcha } from "../lib/captcha";
+import { requireAuth } from "../middleware/auth";
 
 export const authRouter = Router();
 
@@ -172,6 +173,37 @@ authRouter.post("/login", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// PATCH /api/auth/profile — update display name (requires auth)
+authRouter.patch("/profile", requireAuth, async (req, res, next) => {
+  try {
+    const { name } = z.object({ name: z.string().min(2).max(80) }).parse(req.body);
+    const updated = await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: { name },
+    });
+    return res.json({ success: true, data: { id: updated.id, name: updated.name } });
+  } catch (err) { next(err); }
+});
+
+// POST /api/auth/change-password — verify current password, set new one (requires auth)
+authRouter.post("/change-password", requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = z
+      .object({ currentPassword: z.string().min(1), newPassword: z.string().min(8) })
+      .parse(req.body);
+
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+    if (!user) return res.status(404).json({ success: false, error: "User not found" });
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) return res.status(400).json({ success: false, error: "Current password is incorrect" });
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    return res.json({ success: true, message: "Password updated successfully" });
+  } catch (err) { next(err); }
 });
 
 // GET /api/auth/me
