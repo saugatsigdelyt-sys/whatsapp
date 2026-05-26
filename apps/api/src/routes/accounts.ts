@@ -19,12 +19,29 @@ const importCredentialsSchema = z.object({
   phoneNumberId: z.string().min(1),
 });
 
-// GET /api/accounts — list all WA accounts for this business
+// GET /api/accounts — list WA accounts accessible to this user
 accountsRouter.get("/", async (req, res, next) => {
   try {
     const businessId = req.user!.businessId!;
+
+    // Determine which credentials this user can access
+    const member = await prisma.businessMember.findFirst({
+      where: { businessId, userId: req.user!.userId },
+    });
+
+    let credentialFilter: { businessId: string; id?: { in: string[] } } = { businessId };
+
+    if (member && member.role !== "OWNER" && member.role !== "ADMIN") {
+      const access = await prisma.waAccountAccess.findMany({
+        where: { businessMemberId: member.id },
+        select: { waCredentialId: true },
+      });
+      const accessibleIds = access.map((a) => a.waCredentialId);
+      credentialFilter = { businessId, id: { in: accessibleIds } };
+    }
+
     const credentials = await prisma.waCredential.findMany({
-      where: { businessId },
+      where: credentialFilter,
       orderBy: { createdAt: "asc" },
       include: {
         _count: { select: { waAccountAccess: true } },
@@ -39,6 +56,7 @@ accountsRouter.get("/", async (req, res, next) => {
         appId: c.appId,
         wabaId: c.wabaId,
         phoneNumberId: c.phoneNumberId,
+        displayPhone: c.displayPhone ?? null,
         webhookRegistered: c.webhookRegistered,
         lastVerifiedAt: c.lastVerifiedAt,
         teamAccessCount: c._count.waAccountAccess,

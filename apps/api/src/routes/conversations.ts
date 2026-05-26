@@ -18,7 +18,7 @@ conversationsRouter.get("/", async (req, res, next) => {
       where: { businessId, userId: req.user!.userId },
     });
     let accessibleCredIds: string[] = [];
-    if (member?.role === "OWNER" || member?.role === "ADMIN") {
+    if (member?.role === "OWNER" || member?.role === "ADMIN" || member?.role === "MANAGER") {
       const creds = await prisma.waCredential.findMany({ where: { businessId }, select: { id: true } });
       accessibleCredIds = creds.map((c) => c.id);
     } else if (member) {
