@@ -2,10 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Design tokens — OKLCH, green anchor hue 143 ────────────────────────── */
 :root {
-  --sidebar-width: 240px;
+  /* Colour */
+  --color-paper:    oklch(97% 0.008 143);
+  --color-paper-2:  oklch(94% 0.010 143);
+  --color-rule:     oklch(86% 0.008 143);
+  --color-neutral:  oklch(56% 0.007 143);
+  --color-muted:    oklch(72% 0.007 143);
+  --color-ink:      oklch(17% 0.012 143);
+  --color-accent:   oklch(50% 0.175 143);
+  --color-accent-s: oklch(44% 0.165 143);
+  --color-focus:    oklch(52% 0.19  143);
+
+  /* Layout */
+  --sidebar-width: 256px;
+}
+
+html,
+body {
+  overflow-x: clip;
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  font-family: var(--font-body, system-ui, sans-serif);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Landing page button utilities ───────────────────────────────────────── */
+.btn-accent {
+  background: var(--color-accent);
+  color: white;
+  transition: background 0.15s ease;
+}
+.btn-accent:hover {
+  background: var(--color-accent-s);
+}
+.btn-ghost {
+  border: 1px solid var(--color-rule);
+  color: var(--color-ink);
+  background: transparent;
+  transition: border-color 0.15s ease;
+}
+.btn-ghost:hover {
+  border-color: var(--color-neutral);
+}
+
+/* ── Dashboard layout ────────────────────────────────────────────────────── */
+.dashboard-bg {
+  background: var(--color-paper);
 }

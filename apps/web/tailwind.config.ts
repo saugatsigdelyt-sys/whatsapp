@@ -17,6 +17,11 @@ const config: Config = {
           700: "#15803d",
         },
       },
+      fontFamily: {
+        display: ["var(--font-display)", "system-ui", "sans-serif"],
+        body: ["var(--font-body)", "system-ui", "sans-serif"],
+        wordmark: ["var(--font-wordmark)", "Georgia", "serif"],
+      },
     },
   },
   plugins: [],
