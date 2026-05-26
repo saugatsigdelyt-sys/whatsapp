@@ -50,8 +50,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── Page ────────────────────────────────────────────────────────────────────
 export default async function HomePage() {
-  const session = await getServerSession(authOptions);
-  const isLoggedIn = !!session;
+  let isLoggedIn = false;
+  try {
+    const session = await getServerSession(authOptions);
+    isLoggedIn = !!session;
+  } catch {
+    isLoggedIn = false;
+  }
   return (
     <div
       className="min-h-screen"
