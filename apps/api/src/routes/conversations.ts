@@ -14,20 +14,9 @@ conversationsRouter.get("/", async (req, res, next) => {
     const businessId = req.user!.businessId!;
     const credentialId = req.query.credentialId as string | undefined;
 
-    const member = await prisma.businessMember.findFirst({
-      where: { businessId, userId: req.user!.userId },
-    });
-    let accessibleCredIds: string[] = [];
-    if (member?.role === "OWNER" || member?.role === "ADMIN" || member?.role === "MANAGER") {
-      const creds = await prisma.waCredential.findMany({ where: { businessId }, select: { id: true } });
-      accessibleCredIds = creds.map((c) => c.id);
-    } else if (member) {
-      const access = await prisma.waAccountAccess.findMany({
-        where: { businessMemberId: member.id },
-        select: { waCredentialId: true },
-      });
-      accessibleCredIds = access.map((a) => a.waCredentialId);
-    }
+    // All business members can access conversations — same policy as /api/messages
+    const creds = await prisma.waCredential.findMany({ where: { businessId }, select: { id: true } });
+    const accessibleCredIds = creds.map((c) => c.id);
 
     if (credentialId && !accessibleCredIds.includes(credentialId)) {
       return res.status(403).json({ success: false, error: "Access denied" });
@@ -112,8 +101,12 @@ conversationsRouter.post("/backfill", async (req, res, next) => {
     let linked = 0;
 
     for (const msg of orphanMessages) {
-      // Find the credential this message belongs to (toPhone = phoneNumberId for inbound)
-      const cred = credsByPhoneNumberId[msg.toPhone] ?? creds.find(c => c.phoneNumberId === msg.toPhone);
+      // Find the credential this message belongs to.
+      // toPhone may be either the Meta phoneNumberId or a human-readable displayPhone,
+      // depending on whether a PhoneNumber record existed at the time the message was saved.
+      const cred = credsByPhoneNumberId[msg.toPhone]
+        ?? creds.find(c => c.phoneNumberId === msg.toPhone)
+        ?? creds.find(c => c.displayPhone === msg.toPhone);
       if (!cred) continue;
 
       // Upsert conversation
