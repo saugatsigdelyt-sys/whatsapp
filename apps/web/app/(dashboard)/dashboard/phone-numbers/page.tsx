@@ -357,8 +357,25 @@ export default function PhoneNumbersPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [deletingPhoneId, setDeletingPhoneId] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const atLimit = subData ? !subData.canAddWaAccount : false;
+
+  const allSelected = phones.length > 0 && selectedIds.size === phones.length;
+  const someSelected = selectedIds.size > 0;
+
+  function toggleAll() {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(phones.map((p) => p.id)));
+  }
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   async function handleRefresh() {
@@ -408,6 +425,43 @@ export default function PhoneNumbersPage() {
       mutate("/api/accounts/phone-numbers/all");
       mutate("/api/subscription");
     } catch { alert(t("failedToRemoveAccount")); }
+  }
+
+  async function handleBulkExport() {
+    const selected = phones.filter((p) => selectedIds.has(p.id));
+    const header = "Phone Number,Verified Name,Quality Rating,Status,Account,Webhook Registered\r\n";
+    const rows = selected.map((p) =>
+      [
+        p.displayPhone, p.verifiedName ?? "", p.qualityRating ?? "",
+        p.status ?? "", p.waCredential?.name ?? "",
+        p.waCredential?.webhookRegistered ? "Yes" : "No",
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")
+    );
+    const blob = new Blob([header + rows.join("\r\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `phones-selected-${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleBulkDelete() {
+    if (!confirm(`Delete ${selectedIds.size} phone number(s)?`)) return;
+    setBulkLoading(true);
+    try {
+      await Promise.all([...selectedIds].map((id) => api.delete(`/api/accounts/phone-numbers/${id}`)));
+      setSelectedIds(new Set());
+      mutatePhones();
+    } finally { setBulkLoading(false); }
+  }
+
+  async function handleBulkRetryWebhook() {
+    const selected = phones.filter((p) => selectedIds.has(p.id));
+    const credIds = [...new Set(selected.map((p) => p.waCredentialId).filter(Boolean) as string[])];
+    setBulkLoading(true);
+    try {
+      await Promise.all(credIds.map((id) => api.post(`/api/accounts/${id}/register-webhook`).catch(() => {})));
+      mutate("/api/accounts");
+    } finally { setBulkLoading(false); }
   }
 
   return (
@@ -533,9 +587,16 @@ export default function PhoneNumbersPage() {
 
       {/* ── Phone numbers table ───────────────────────────────────────────── */}
       <div>
-        <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--color-ink)" }}>
-          {t("phoneNumbersTitle")}
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
+            {t("phoneNumbersTitle")}
+            {phones.length > 0 && (
+              <span className="ml-2 text-xs font-normal" style={{ color: "var(--color-muted)" }}>
+                ({phones.length})
+              </span>
+            )}
+          </h2>
+        </div>
 
         <div
           className="rounded-xl border overflow-hidden"
@@ -553,6 +614,15 @@ export default function PhoneNumbersPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "var(--color-paper-2)", borderBottom: "1px solid var(--color-rule)" }}>
                 <tr>
+                  <th className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      className="rounded cursor-pointer"
+                      style={{ accentColor: "var(--color-accent)" }}
+                    />
+                  </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--color-muted)" }}>
                     {t("colPhone")}
                   </th>
@@ -578,16 +648,28 @@ export default function PhoneNumbersPage() {
                     HEALTHY: "healthHealthy", WARNING: "healthWarning", ISSUE: "healthIssue",
                     LOCKED: "healthLocked", ERROR: "healthError", UNKNOWN: "healthUnknown",
                   }[health];
+                  const isSelected = selectedIds.has(phone.id);
                   return (
                     <tr
                       key={phone.id}
-                      className="transition-colors"
+                      className="transition-colors cursor-pointer"
                       style={{
                         borderTop: idx > 0 ? "1px solid var(--color-rule)" : undefined,
+                        background: isSelected ? "oklch(96% 0.018 143)" : "white",
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-paper)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
+                      onClick={() => toggleOne(phone.id)}
+                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--color-paper)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = isSelected ? "oklch(96% 0.018 143)" : "white"; }}
                     >
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleOne(phone.id)}
+                          className="rounded cursor-pointer"
+                          style={{ accentColor: "var(--color-accent)" }}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="font-semibold text-sm" style={{ color: "var(--color-ink)" }}>
                           {phone.displayPhone}
@@ -623,7 +705,7 @@ export default function PhoneNumbersPage() {
                           )
                         ) : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => handleDeletePhone(phone.id)}
                           disabled={deletingPhoneId === phone.id}
@@ -641,6 +723,49 @@ export default function PhoneNumbersPage() {
           )}
         </div>
       </div>
+
+      {/* ── Bulk action bar ───────────────────────────────────────────────── */}
+      {someSelected && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-2xl border"
+          style={{ background: "var(--color-ink)", borderColor: "oklch(35% 0.01 143)", minWidth: "320px" }}
+        >
+          <span className="text-sm font-medium text-white mr-2">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <button
+              onClick={handleBulkExport}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+              style={{ background: "oklch(30% 0.01 143)", color: "white" }}
+            >
+              <Download size={12} /> Export
+            </button>
+            <button
+              onClick={handleBulkRetryWebhook}
+              disabled={bulkLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+              style={{ background: "oklch(30% 0.01 143)", color: "white" }}
+            >
+              <RefreshCw size={12} className={bulkLoading ? "animate-spin" : ""} /> Retry Webhook
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+              style={{ background: "oklch(40% 0.20 29)", color: "white" }}
+            >
+              <Trash2 size={12} /> Delete
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="p-1.5 rounded-lg text-white/60 hover:text-white transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

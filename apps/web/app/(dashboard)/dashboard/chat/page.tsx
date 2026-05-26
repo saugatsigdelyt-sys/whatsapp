@@ -52,7 +52,11 @@ export default function ChatPage() {
   }, [accounts, selectedCredId]);
 
   const convUrl = selectedCredId ? `/api/conversations?credentialId=${selectedCredId}` : null;
-  const { data: convsData } = useSWR(convUrl, fetcher, { refreshInterval: 5000 });
+  const { data: convsData, mutate: mutateConvs } = useSWR(convUrl, fetcher, {
+    refreshInterval: 1500,
+    dedupingInterval: 500,
+    revalidateOnFocus: true,
+  });
   const conversations: Conversation[] = convsData?.data ?? [];
 
   const filtered = conversations.filter((c) =>
@@ -60,7 +64,11 @@ export default function ChatPage() {
   );
 
   const msgUrl = selectedConvId ? `/api/conversations/${selectedConvId}/messages` : null;
-  const { data: msgsData, mutate: mutateMsgs } = useSWR(msgUrl, fetcher, { refreshInterval: 5000 });
+  const { data: msgsData, mutate: mutateMsgs } = useSWR(msgUrl, fetcher, {
+    refreshInterval: 1500,
+    dedupingInterval: 500,
+    revalidateOnFocus: true,
+  });
   const messages: Message[] = msgsData?.data ?? [];
   const activeConv = conversations.find((c) => c.id === selectedConvId);
 
@@ -76,6 +84,7 @@ export default function ChatPage() {
       await api.post(`/api/conversations/${selectedConvId}/reply`, { text: replyText.trim() });
       setReplyText("");
       mutateMsgs();
+      mutateConvs();
     } catch (err: any) {
       alert(err.response?.data?.error ?? t("failedToSend"));
     } finally { setSending(false); }

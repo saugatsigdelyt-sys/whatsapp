@@ -4,6 +4,8 @@
  * accent: oklch(50% 0.175 143) — used ≤ 3% per viewport
  */
 import Link from "next/link";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import {
   MessageCircle,
   Shield,
@@ -47,7 +49,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await getServerSession(authOptions);
+  const isLoggedIn = !!session;
   return (
     <div
       className="min-h-screen"
@@ -99,19 +103,30 @@ export default function HomePage() {
 
           {/* Actions */}
           <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="hidden md:block text-sm font-medium transition-colors"
-              style={{ color: "var(--color-neutral)" }}
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/register"
-              className="btn-accent text-sm font-semibold px-4 py-2 rounded-lg"
-            >
-              Get started free
-            </Link>
+            {isLoggedIn ? (
+              <Link
+                href="/dashboard"
+                className="btn-accent text-sm font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-1.5"
+              >
+                Dashboard <ArrowRight size={13} />
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="hidden md:block text-sm font-medium transition-colors"
+                  style={{ color: "var(--color-neutral)" }}
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/register"
+                  className="btn-accent text-sm font-semibold px-4 py-2 rounded-lg"
+                >
+                  Get started free
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -166,10 +181,10 @@ export default function HomePage() {
 
             <div className="flex items-center gap-3 flex-wrap mb-4">
               <Link
-                href="/register"
+                href={isLoggedIn ? "/dashboard" : "/register"}
                 className="btn-accent inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl"
               >
-                Start for free <ArrowRight size={14} />
+                {isLoggedIn ? "Go to Dashboard" : "Start for free"} <ArrowRight size={14} />
               </Link>
               <Link
                 href="/pricing"

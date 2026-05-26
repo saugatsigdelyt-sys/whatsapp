@@ -131,22 +131,41 @@ messagesRouter.post("/send", async (req, res, next) => {
   }
 });
 
-// GET /api/messages/stats — message counts
+// GET /api/messages/summary/stats — full dashboard metrics
 messagesRouter.get("/summary/stats", async (req, res, next) => {
   try {
     const businessId = req.user!.businessId!;
-    const [total, inbound, outbound, today] = await Promise.all([
-      prisma.message.count({ where: { businessId } }),
-      prisma.message.count({ where: { businessId, direction: "INBOUND" } }),
-      prisma.message.count({ where: { businessId, direction: "OUTBOUND" } }),
-      prisma.message.count({
-        where: {
-          businessId,
-          createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-        },
-      }),
-    ]);
-    return res.json({ success: true, data: { total, inbound, outbound, today } });
+    const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+
+    const [total, inbound, outbound, today, conversations, teamMembers, business, phones] =
+      await Promise.all([
+        prisma.message.count({ where: { businessId } }),
+        prisma.message.count({ where: { businessId, direction: "INBOUND" } }),
+        prisma.message.count({ where: { businessId, direction: "OUTBOUND" } }),
+        prisma.message.count({ where: { businessId, createdAt: { gte: startOfDay } } }),
+        prisma.conversation.count({ where: { businessId } }),
+        prisma.businessMember.count({ where: { businessId } }),
+        prisma.business.findUnique({ where: { id: businessId }, select: { balance: true } }),
+        prisma.phoneNumber.findMany({
+          where: { businessId },
+          select: { status: true, healthError: true },
+        }),
+      ]);
+
+    const phonesTotal = phones.length;
+    const phonesNeedAttention = phones.filter(
+      (p) => p.healthError || (p.status && p.status !== "CONNECTED")
+    ).length;
+
+    return res.json({
+      success: true,
+      data: {
+        total, inbound, outbound, today,
+        conversations, teamMembers,
+        balance: business?.balance ?? 0,
+        phones: { total: phonesTotal, healthy: phonesTotal - phonesNeedAttention, needAttention: phonesNeedAttention },
+      },
+    });
   } catch (err) {
     next(err);
   }

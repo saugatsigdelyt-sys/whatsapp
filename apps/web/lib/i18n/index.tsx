@@ -73,6 +73,11 @@ const en: Dict = {
   // ── Dashboard Overview
   overviewTitle: "Overview",
   overviewSubtitle: "Your WhatsApp Business at a glance",
+  statConversations: "Conversations",
+  statTeamMembers: "Team Members",
+  statBalance: "Balance",
+  statPhonesHealthy: "Healthy Phones",
+  statPhonesIssue: "Need Attention",
   setupRequired: "Setup required:",
   setupRequiredMsg: (_href: string) =>
     `Go to Phone Numbers to import your WhatsApp Cloud API credentials.`,
@@ -472,6 +477,11 @@ const zh: Dict = {
   // ── Dashboard Overview
   overviewTitle: "总览",
   overviewSubtitle: "您的 WhatsApp 业务概览",
+  statConversations: "会话总数",
+  statTeamMembers: "团队成员",
+  statBalance: "余额",
+  statPhonesHealthy: "正常号码",
+  statPhonesIssue: "需要处理",
   setupRequired: "需要设置：",
   setupRequiredMsg: () => "前往「电话号码」以导入您的 WhatsApp Cloud API 凭据。",
   almostThere: "即将完成：",
