@@ -3,9 +3,9 @@
  * display: Bricolage Grotesque · body: IBM Plex Sans · wordmark: Fraunces
  * accent: oklch(50% 0.175 143) — used ≤ 3% per viewport
  */
+"use client";
 import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { useSession } from "next-auth/react";
 import {
   MessageCircle,
   Shield,
@@ -49,14 +49,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
-export default async function HomePage() {
-  let isLoggedIn = false;
-  try {
-    const session = await getServerSession(authOptions);
-    isLoggedIn = !!session;
-  } catch {
-    isLoggedIn = false;
-  }
+export default function HomePage() {
+  const { data: session } = useSession();
+  const isLoggedIn = !!session;
   return (
     <div
       className="min-h-screen"
