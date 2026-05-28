@@ -606,9 +606,9 @@ function MyAccountsTab() {
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Healthy", count: summary.healthy, ...HEALTH_CFG.HEALTHY },
-          { label: "Error",   count: summary.error,   ...HEALTH_CFG.ERROR   },
-          { label: "Locked",  count: summary.locked,  ...HEALTH_CFG.LOCKED  },
+          { ...HEALTH_CFG.HEALTHY, label: "Healthy", count: summary.healthy },
+          { ...HEALTH_CFG.ERROR,   label: "Error",   count: summary.error   },
+          { ...HEALTH_CFG.LOCKED,  label: "Locked",  count: summary.locked  },
         ].map((c) => (
           <div key={c.label} className={`rounded-xl border p-4 ${c.bg} ${c.border}`}>
             <div className={`text-2xl font-bold ${c.text}`}>{c.count}</div>
