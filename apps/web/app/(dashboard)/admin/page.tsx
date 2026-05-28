@@ -523,7 +523,7 @@ function MyAccountsTab() {
   const [limit, setLimit] = useState(20);
   const [healthFilter, setHealthFilter] = useState("ALL");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [refreshingAll, setRefreshingAll] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   const url = `/api/admin/my-accounts?page=${page}&limit=${limit}${healthFilter !== "ALL" ? `&health=${healthFilter}` : ""}`;
@@ -544,17 +544,17 @@ function MyAccountsTab() {
     setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
 
-  async function handleRefresh(id: string, e: React.MouseEvent) {
-    e.stopPropagation();
-    setRefreshingId(id);
+  async function handleRefreshAll() {
+    setRefreshingAll(true);
     setMsg(null);
     try {
-      await api.post(`/api/admin/my-accounts/${id}/refresh`);
+      const res = await api.post("/api/admin/my-accounts/refresh-all");
+      setMsg({ text: res.data?.message ?? "All accounts refreshed", ok: true });
       mutate();
     } catch (err: any) {
       setMsg({ text: err?.response?.data?.error ?? "Refresh failed", ok: false });
     } finally {
-      setRefreshingId(null);
+      setRefreshingAll(false);
     }
   }
 
@@ -617,7 +617,7 @@ function MyAccountsTab() {
         ))}
       </div>
 
-      {/* Filters + per-page */}
+      {/* Filters + per-page + Refresh All */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           {["ALL", "HEALTHY", "ERROR", "LOCKED"].map((f) => (
@@ -628,15 +628,22 @@ function MyAccountsTab() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Per page:</span>
-          {[10, 20, 100].map((n) => (
-            <button key={n} onClick={() => { setLimit(n); setPage(1); setSelectedIds(new Set()); }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                limit === n ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-              {n}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Per page:</span>
+            {[10, 20, 100].map((n) => (
+              <button key={n} onClick={() => { setLimit(n); setPage(1); setSelectedIds(new Set()); }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  limit === n ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                {n}
+              </button>
+            ))}
+          </div>
+          <button onClick={handleRefreshAll} disabled={refreshingAll}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            <RefreshCw size={11} className={refreshingAll ? "animate-spin" : ""} />
+            {refreshingAll ? "Refreshing…" : "Refresh All"}
+          </button>
         </div>
       </div>
 
@@ -696,16 +703,10 @@ function MyAccountsTab() {
                   {a.lastVerifiedAt ? new Date(a.lastVerifiedAt).toLocaleDateString() : "—"}
                 </td>
                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center gap-3">
-                    <button onClick={(e) => handleRefresh(a.id, e)} disabled={refreshingId === a.id}
-                      className="flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium disabled:opacity-50">
-                      <RefreshCw size={11} className={refreshingId === a.id ? "animate-spin" : ""} /> Refresh
-                    </button>
-                    <button onClick={(e) => handleDelete(a.id, e)}
-                      className="flex items-center gap-1 text-xs text-red-500 hover:underline font-medium">
-                      <Trash2 size={11} /> Delete
-                    </button>
-                  </div>
+                  <button onClick={(e) => handleDelete(a.id, e)}
+                    className="flex items-center gap-1 text-xs text-red-500 hover:underline font-medium">
+                    <Trash2 size={11} /> Delete
+                  </button>
                 </td>
               </tr>
             ))}

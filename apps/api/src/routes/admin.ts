@@ -2,7 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import prisma from "../lib/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
-import { encrypt } from "../lib/encryption";
+import { encrypt, decrypt } from "../lib/encryption";
+import { getPhoneNumbers } from "../lib/meta";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -388,6 +389,62 @@ adminRouter.post("/my-accounts/bulk-delete", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/admin/my-accounts/refresh-all — MUST be before /:id routes
+adminRouter.post("/my-accounts/refresh-all", async (req, res, next) => {
+  try {
+    const businessId = req.user!.businessId!;
+    const credentials = await prisma.waCredential.findMany({ where: { businessId } });
+
+    let refreshed = 0;
+    const errors: Array<{ credentialId: string; name: string; error: string }> = [];
+
+    for (const cred of credentials) {
+      const accessToken = decrypt(cred.accessTokenEnc);
+      const result = await getPhoneNumbers({ wabaId: cred.wabaId, accessToken });
+
+      if (result.success && result.phoneNumbers) {
+        for (const phone of result.phoneNumbers) {
+          await prisma.phoneNumber.upsert({
+            where: { phoneNumberId: phone.id },
+            update: {
+              displayPhone: phone.display_phone_number, verifiedName: phone.verified_name,
+              qualityRating: phone.quality_rating, status: phone.status,
+              healthError: null, waCredentialId: cred.id,
+            },
+            create: {
+              businessId, phoneNumberId: phone.id, displayPhone: phone.display_phone_number,
+              verifiedName: phone.verified_name, qualityRating: phone.quality_rating,
+              status: phone.status, waCredentialId: cred.id,
+            },
+          });
+          refreshed++;
+        }
+        await prisma.waCredential.update({
+          where: { id: cred.id },
+          data: { webhookError: null, lastVerifiedAt: new Date() },
+        });
+      } else {
+        await prisma.waCredential.update({
+          where: { id: cred.id },
+          data: { webhookError: result.error ?? "Failed to reach Meta API" },
+        });
+        await prisma.phoneNumber.updateMany({
+          where: { businessId, waCredentialId: cred.id },
+          data: { healthError: result.error ?? "Failed to reach Meta API" },
+        });
+        errors.push({ credentialId: cred.id, name: cred.name, error: result.error ?? "Unknown error" });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Refreshed ${refreshed} phone number(s) across ${credentials.length} account(s).${errors.length ? ` ${errors.length} account(s) had errors.` : ""}`,
+      refreshed,
+      errors,
+    });
+  } catch (err) { next(err); }
+});
+
 // POST /api/admin/my-accounts/:id/refresh
 adminRouter.post("/my-accounts/:id/refresh", async (req, res, next) => {
   try {
@@ -397,8 +454,6 @@ adminRouter.post("/my-accounts/:id/refresh", async (req, res, next) => {
     });
     if (!cred) return res.status(404).json({ success: false, error: "Account not found" });
 
-    const { decrypt } = await import("../lib/encryption");
-    const { getPhoneNumbers } = await import("../lib/meta");
     const accessToken = decrypt(cred.accessTokenEnc);
     const result = await getPhoneNumbers({ wabaId: cred.wabaId, accessToken });
 
