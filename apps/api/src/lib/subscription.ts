@@ -1,4 +1,4 @@
-import type { SubscriptionTier } from "@whatsapp-saas/database";
+type SubscriptionTier = "FREE" | "STANDARD" | "PREMIUM" | "PLATINUM";
 
 // ── Tier definitions ───────────────────────────
 export const TIER_LIMITS: Record<
