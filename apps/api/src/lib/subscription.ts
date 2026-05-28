@@ -42,9 +42,13 @@ export async function getOrCreateSubscription(
   });
 }
 
+// Anything >= UNLIMITED_THRESHOLD means "no limit"
+const UNLIMITED_THRESHOLD = 999999;
+
 /**
  * Checks if the business can add another WA account.
  * Returns { allowed: true } or { allowed: false, reason: string }
+ * limit === -1 means unlimited.
  */
 export async function canAddWaAccount(
   businessId: string,
@@ -54,6 +58,11 @@ export async function canAddWaAccount(
     getOrCreateSubscription(businessId, prisma),
     prisma.waCredential.count({ where: { businessId } }),
   ]);
+
+  // Treat very large numbers as unlimited
+  if (sub.maxWaAccounts >= UNLIMITED_THRESHOLD) {
+    return { allowed: true, current: count, limit: -1 };
+  }
 
   if (count >= sub.maxWaAccounts) {
     return {

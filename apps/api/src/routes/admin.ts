@@ -90,11 +90,14 @@ adminRouter.patch("/users/:businessId/plan", async (req, res, next) => {
       .object({ tier: z.enum(["FREE", "STANDARD", "PREMIUM", "PLATINUM"]) })
       .parse(req.body);
 
+    // Read live limits from PlatformSettings; fall back to sensible defaults.
+    // 999999 = unlimited (handled by canAddWaAccount as no-limit).
+    const ps = await prisma.platformSettings.findUnique({ where: { id: "singleton" } });
     const tierLimits: Record<string, { maxWaAccounts: number; maxTeamMembers: number }> = {
-      FREE: { maxWaAccounts: 1, maxTeamMembers: 1 },
-      STANDARD: { maxWaAccounts: 3, maxTeamMembers: 5 },
-      PREMIUM: { maxWaAccounts: 10, maxTeamMembers: 20 },
-      PLATINUM: { maxWaAccounts: 50, maxTeamMembers: 100 },
+      FREE:     { maxWaAccounts: ps?.maxWaFree     ?? 1,      maxTeamMembers: ps?.maxTeamFree     ?? 1      },
+      STANDARD: { maxWaAccounts: ps?.maxWaStandard ?? 10,     maxTeamMembers: ps?.maxTeamStandard ?? 2      },
+      PREMIUM:  { maxWaAccounts: ps?.maxWaPremium  ?? 100,    maxTeamMembers: ps?.maxTeamPremium  ?? 4      },
+      PLATINUM: { maxWaAccounts: ps?.maxWaPlatinum ?? 999999, maxTeamMembers: ps?.maxTeamPlatinum ?? 999999 },
     };
     const limits = tierLimits[tier];
     const planExpiresAt = tier === "FREE" ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -307,6 +310,139 @@ adminRouter.delete("/platform-phones/:id", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN'S OWN WA ACCOUNTS ("My Accounts")
+// ─────────────────────────────────────────────────────────────────────────────
+
+type CredHealth = "HEALTHY" | "ERROR" | "LOCKED";
+
+function computeCredHealth(cred: {
+  webhookError: string | null;
+  phoneNumbers: { status: string | null; healthError: string | null }[];
+}): CredHealth {
+  if (cred.webhookError) return "ERROR";
+  for (const p of cred.phoneNumbers) {
+    if (p.healthError) return "ERROR";
+    const s = p.status?.toUpperCase();
+    if (s === "BANNED") return "LOCKED";
+    if (s === "FLAGGED" || s === "RESTRICTED") return "ERROR";
+  }
+  return "HEALTHY";
+}
+
+// GET /api/admin/my-accounts
+adminRouter.get("/my-accounts", async (req, res, next) => {
+  try {
+    const businessId = req.user!.businessId!;
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const limit = Math.min(Number(req.query.limit ?? 20), 100);
+    const healthFilter = req.query.health as string | undefined;
+
+    const credentials = await prisma.waCredential.findMany({
+      where: { businessId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        phoneNumbers: {
+          select: { id: true, displayPhone: true, status: true, qualityRating: true, healthError: true },
+        },
+      },
+    });
+
+    const withHealth = credentials.map((c) => ({ ...c, health: computeCredHealth(c) }));
+    const summary = {
+      healthy: withHealth.filter((c) => c.health === "HEALTHY").length,
+      error:   withHealth.filter((c) => c.health === "ERROR").length,
+      locked:  withHealth.filter((c) => c.health === "LOCKED").length,
+    };
+
+    const filtered = healthFilter && ["HEALTHY", "ERROR", "LOCKED"].includes(healthFilter)
+      ? withHealth.filter((c) => c.health === healthFilter)
+      : withHealth;
+
+    const total = filtered.length;
+    const paginated = filtered.slice((page - 1) * limit, page * limit);
+
+    return res.json({
+      success: true,
+      data: paginated.map((c) => ({
+        id: c.id, name: c.name, appId: c.appId, wabaId: c.wabaId,
+        phoneNumberId: c.phoneNumberId, webhookRegistered: c.webhookRegistered,
+        webhookError: c.webhookError, lastVerifiedAt: c.lastVerifiedAt,
+        health: c.health,
+        phoneNumbers: c.phoneNumbers,
+      })),
+      total, page, limit, summary,
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/admin/my-accounts/bulk-delete — MUST be before /:id routes
+adminRouter.post("/my-accounts/bulk-delete", async (req, res, next) => {
+  try {
+    const businessId = req.user!.businessId!;
+    const { ids } = z.object({ ids: z.array(z.string()).min(1) }).parse(req.body);
+    await prisma.waCredential.deleteMany({ where: { id: { in: ids }, businessId } });
+    return res.json({ success: true, message: `Deleted ${ids.length} account(s)` });
+  } catch (err) { next(err); }
+});
+
+// POST /api/admin/my-accounts/:id/refresh
+adminRouter.post("/my-accounts/:id/refresh", async (req, res, next) => {
+  try {
+    const businessId = req.user!.businessId!;
+    const cred = await prisma.waCredential.findFirst({
+      where: { id: req.params.id, businessId },
+    });
+    if (!cred) return res.status(404).json({ success: false, error: "Account not found" });
+
+    const { decrypt } = await import("../lib/encryption");
+    const { getPhoneNumbers } = await import("../lib/meta");
+    const accessToken = decrypt(cred.accessTokenEnc);
+    const result = await getPhoneNumbers({ wabaId: cred.wabaId, accessToken });
+
+    if (result.success && result.phoneNumbers) {
+      for (const phone of result.phoneNumbers) {
+        await prisma.phoneNumber.upsert({
+          where: { phoneNumberId: phone.id },
+          update: {
+            displayPhone: phone.display_phone_number, verifiedName: phone.verified_name,
+            qualityRating: phone.quality_rating, status: phone.status, healthError: null,
+            waCredentialId: cred.id,
+          },
+          create: {
+            businessId, phoneNumberId: phone.id, displayPhone: phone.display_phone_number,
+            verifiedName: phone.verified_name, qualityRating: phone.quality_rating,
+            status: phone.status, waCredentialId: cred.id,
+          },
+        });
+      }
+      await prisma.waCredential.update({
+        where: { id: cred.id },
+        data: { webhookError: null, lastVerifiedAt: new Date() },
+      });
+    } else {
+      await prisma.waCredential.update({
+        where: { id: cred.id },
+        data: { webhookError: result.error ?? "Failed to reach Meta API" },
+      });
+    }
+    return res.json({ success: true, message: "Health refreshed" });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/admin/my-accounts/:id
+adminRouter.delete("/my-accounts/:id", async (req, res, next) => {
+  try {
+    const businessId = req.user!.businessId!;
+    const cred = await prisma.waCredential.findFirst({
+      where: { id: req.params.id, businessId },
+    });
+    if (!cred) return res.status(404).json({ success: false, error: "Account not found" });
+    await prisma.waCredential.delete({ where: { id: req.params.id } });
+    return res.json({ success: true, message: "Account deleted" });
+  } catch (err) { next(err); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
