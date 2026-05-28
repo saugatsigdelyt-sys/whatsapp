@@ -328,25 +328,33 @@ accountsRouter.post("/phone-numbers/refresh", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/accounts/phone-numbers/export — CSV export
+// GET /api/accounts/phone-numbers/export — CSV export (re-importable format)
 accountsRouter.get("/phone-numbers/export", async (req, res, next) => {
   try {
     const phones = await prisma.phoneNumber.findMany({
       where: { businessId: req.user!.businessId },
       include: {
-        waCredential: { select: { name: true, webhookRegistered: true } },
+        waCredential: {
+          select: { name: true, appId: true, wabaId: true, webhookRegistered: true },
+        },
       },
       orderBy: { createdAt: "asc" },
     });
 
-    const header = "Phone Number,Verified Name,Quality Rating,Status,Account,Webhook Registered\r\n";
+    // Re-importable format: appSecret and accessToken left blank (user fills in)
+    const header = "name,appId,appSecret,accessToken,wabaId,phoneNumberId,displayPhone,verifiedName,status,qualityRating,webhookRegistered\r\n";
     const rows = phones.map((p) =>
       [
+        p.waCredential?.name ?? "",
+        p.waCredential?.appId ?? "",
+        "",   // appSecret — cannot export (encrypted); user must fill in
+        "",   // accessToken — cannot export (encrypted); user must fill in
+        p.waCredential?.wabaId ?? "",
+        p.phoneNumberId,
         p.displayPhone,
         p.verifiedName ?? "",
-        p.qualityRating ?? "",
         p.status ?? "",
-        p.waCredential?.name ?? "",
+        p.qualityRating ?? "",
         p.waCredential?.webhookRegistered ? "Yes" : "No",
       ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
