@@ -390,58 +390,62 @@ adminRouter.post("/my-accounts/bulk-delete", async (req, res, next) => {
 });
 
 // POST /api/admin/my-accounts/refresh-all — MUST be before /:id routes
+// Fire-and-forget: returns 202 immediately; background job does the heavy lifting
 adminRouter.post("/my-accounts/refresh-all", async (req, res, next) => {
   try {
     const businessId = req.user!.businessId!;
     const credentials = await prisma.waCredential.findMany({ where: { businessId } });
 
-    let refreshed = 0;
-    const errors: Array<{ credentialId: string; name: string; error: string }> = [];
-
-    for (const cred of credentials) {
-      const accessToken = decrypt(cred.accessTokenEnc);
-      const result = await getPhoneNumbers({ wabaId: cred.wabaId, accessToken });
-
-      if (result.success && result.phoneNumbers) {
-        for (const phone of result.phoneNumbers) {
-          await prisma.phoneNumber.upsert({
-            where: { phoneNumberId: phone.id },
-            update: {
-              displayPhone: phone.display_phone_number, verifiedName: phone.verified_name,
-              qualityRating: phone.quality_rating, status: phone.status,
-              healthError: null, waCredentialId: cred.id,
-            },
-            create: {
-              businessId, phoneNumberId: phone.id, displayPhone: phone.display_phone_number,
-              verifiedName: phone.verified_name, qualityRating: phone.quality_rating,
-              status: phone.status, waCredentialId: cred.id,
-            },
-          });
-          refreshed++;
-        }
-        await prisma.waCredential.update({
-          where: { id: cred.id },
-          data: { webhookError: null, lastVerifiedAt: new Date() },
-        });
-      } else {
-        await prisma.waCredential.update({
-          where: { id: cred.id },
-          data: { webhookError: result.error ?? "Failed to reach Meta API" },
-        });
-        await prisma.phoneNumber.updateMany({
-          where: { businessId, waCredentialId: cred.id },
-          data: { healthError: result.error ?? "Failed to reach Meta API" },
-        });
-        errors.push({ credentialId: cred.id, name: cred.name, error: result.error ?? "Unknown error" });
-      }
-    }
-
-    return res.json({
+    // Respond immediately so nginx / client don't time out
+    res.status(202).json({
       success: true,
-      message: `Refreshed ${refreshed} phone number(s) across ${credentials.length} account(s).${errors.length ? ` ${errors.length} account(s) had errors.` : ""}`,
-      refreshed,
-      errors,
+      message: `Refresh started for ${credentials.length} account(s). Check back in a moment.`,
+      total: credentials.length,
     });
+
+    // Run the refresh in the background (do NOT await)
+    (async () => {
+      for (const cred of credentials) {
+        try {
+          const accessToken = decrypt(cred.accessTokenEnc);
+          const result = await getPhoneNumbers({ wabaId: cred.wabaId, accessToken });
+
+          if (result.success && result.phoneNumbers) {
+            for (const phone of result.phoneNumbers) {
+              await prisma.phoneNumber.upsert({
+                where: { phoneNumberId: phone.id },
+                update: {
+                  displayPhone: phone.display_phone_number, verifiedName: phone.verified_name,
+                  qualityRating: phone.quality_rating, status: phone.status,
+                  healthError: null, waCredentialId: cred.id,
+                },
+                create: {
+                  businessId, phoneNumberId: phone.id, displayPhone: phone.display_phone_number,
+                  verifiedName: phone.verified_name, qualityRating: phone.quality_rating,
+                  status: phone.status, waCredentialId: cred.id,
+                },
+              });
+            }
+            await prisma.waCredential.update({
+              where: { id: cred.id },
+              data: { webhookError: null, lastVerifiedAt: new Date() },
+            });
+          } else {
+            await prisma.waCredential.update({
+              where: { id: cred.id },
+              data: { webhookError: result.error ?? "Failed to reach Meta API" },
+            });
+            await prisma.phoneNumber.updateMany({
+              where: { businessId, waCredentialId: cred.id },
+              data: { healthError: result.error ?? "Failed to reach Meta API" },
+            });
+          }
+        } catch (credErr: any) {
+          console.error(`[refresh-all] Failed for credential ${cred.id}:`, credErr?.message);
+        }
+      }
+      console.log(`[refresh-all] Completed for business ${businessId}, processed ${credentials.length} account(s).`);
+    })();
   } catch (err) { next(err); }
 });
 

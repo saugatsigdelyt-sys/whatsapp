@@ -549,11 +549,15 @@ function MyAccountsTab() {
     setMsg(null);
     try {
       const res = await api.post("/api/admin/my-accounts/refresh-all");
-      setMsg({ text: res.data?.message ?? "All accounts refreshed", ok: true });
-      mutate();
+      setMsg({ text: (res.data?.message ?? "Refresh started.") + " Reloading in 10s…", ok: true });
+      // Auto-reload after background job has time to finish
+      setTimeout(() => {
+        mutate();
+        setMsg(null);
+        setRefreshingAll(false);
+      }, 10000);
     } catch (err: any) {
       setMsg({ text: err?.response?.data?.error ?? "Refresh failed", ok: false });
-    } finally {
       setRefreshingAll(false);
     }
   }
