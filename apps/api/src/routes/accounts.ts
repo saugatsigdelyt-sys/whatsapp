@@ -78,11 +78,6 @@ async function autoRegisterWebhook(
 // GET /api/accounts
 accountsRouter.get("/", async (req, res, next) => {
   try {
-    // SUPER_ADMIN manages their own accounts exclusively via /admin — hide them here
-    if (req.user!.role === "SUPER_ADMIN") {
-      return res.json({ success: true, data: [] });
-    }
-
     const businessId = req.user!.businessId!;
     const member = await prisma.businessMember.findFirst({
       where: { businessId, userId: req.user!.userId },
@@ -261,11 +256,6 @@ accountsRouter.delete("/:id", async (req, res, next) => {
 // GET /api/accounts/phone-numbers/all — all phone numbers with credential info
 accountsRouter.get("/phone-numbers/all", async (req, res, next) => {
   try {
-    // SUPER_ADMIN accounts are managed via /admin — exclude from regular view
-    if (req.user!.role === "SUPER_ADMIN") {
-      return res.json({ success: true, data: [] });
-    }
-
     const phones = await prisma.phoneNumber.findMany({
       where: { businessId: req.user!.businessId },
       include: {
