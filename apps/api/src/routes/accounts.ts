@@ -11,7 +11,7 @@ accountsRouter.use(requireAuth);
 accountsRouter.use(requireBusiness);
 
 const importCredentialsSchema = z.object({
-  name: z.string().min(1).max(80).default("My WhatsApp Account"),
+  name: z.string().max(80).optional().default(""), // Optional — falls back to Meta verified name
   appId: z.string().min(1),
   appSecret: z.string().min(1),
   accessToken: z.string().min(1),
@@ -155,10 +155,13 @@ accountsRouter.post("/import", async (req, res, next) => {
     const appSecretEnc = encrypt(body.appSecret);
     const accessTokenEnc = encrypt(body.accessToken);
 
+    // Resolve display name: use user-provided label, else will be updated from Meta verified name below
+    let credentialName = body.name?.trim() || "";
+
     const credential = await prisma.waCredential.upsert({
       where: { businessId_phoneNumberId: { businessId, phoneNumberId: body.phoneNumberId } },
-      update: { name: body.name, appId: body.appId, appSecretEnc, accessTokenEnc, wabaId: body.wabaId, lastVerifiedAt: new Date() },
-      create: { businessId, name: body.name, appId: body.appId, appSecretEnc, accessTokenEnc, wabaId: body.wabaId, phoneNumberId: body.phoneNumberId, lastVerifiedAt: new Date() },
+      update: { ...(credentialName ? { name: credentialName } : {}), appId: body.appId, appSecretEnc, accessTokenEnc, wabaId: body.wabaId, lastVerifiedAt: new Date() },
+      create: { businessId, name: credentialName || "Importing…", appId: body.appId, appSecretEnc, accessTokenEnc, wabaId: body.wabaId, phoneNumberId: body.phoneNumberId, lastVerifiedAt: new Date() },
     });
 
     // Give owner access
@@ -179,6 +182,12 @@ accountsRouter.post("/import", async (req, res, next) => {
       : [body.phoneNumberId];
 
     if (phones.success && phones.phoneNumbers) {
+      // If no custom label was given, use the verified name of the matching phone from Meta
+      if (!credentialName) {
+        const matchingPhone = phones.phoneNumbers.find((p) => p.id === body.phoneNumberId);
+        credentialName = matchingPhone?.verified_name || phones.phoneNumbers[0]?.verified_name || body.phoneNumberId;
+        await prisma.waCredential.update({ where: { id: credential.id }, data: { name: credentialName } });
+      }
       for (const phone of phones.phoneNumbers) {
         await prisma.phoneNumber.upsert({
           where: { phoneNumberId: phone.id },
@@ -440,14 +449,37 @@ accountsRouter.get("/phone-numbers/export", async (req, res, next) => {
 });
 
 // DELETE /api/accounts/phone-numbers/:phoneId
+// Deletes everything: credential, conversations, and the phone number record.
 accountsRouter.delete("/phone-numbers/:phoneId", async (req, res, next) => {
   try {
     const phone = await prisma.phoneNumber.findFirst({
       where: { id: req.params.phoneId, businessId: req.user!.businessId },
     });
     if (!phone) return res.status(404).json({ success: false, error: "Phone number not found" });
+
+    if (phone.waCredentialId) {
+      // Null out conversationId on messages first to avoid FK constraint issues
+      // (Prisma's default for optional nullable FK is NO ACTION on the DB level)
+      const convs = await prisma.conversation.findMany({
+        where: { waCredentialId: phone.waCredentialId },
+        select: { id: true },
+      });
+      if (convs.length > 0) {
+        await prisma.message.updateMany({
+          where: { conversationId: { in: convs.map((c) => c.id) } },
+          data: { conversationId: null },
+        });
+      }
+      // Clean up templates and bulk jobs that reference the credential
+      await prisma.messageTemplate.deleteMany({ where: { waCredentialId: phone.waCredentialId } });
+      await prisma.bulkSendJob.deleteMany({ where: { waCredentialId: phone.waCredentialId } });
+      // Delete credential — conversations cascade-delete via onDelete: Cascade
+      await prisma.waCredential.delete({ where: { id: phone.waCredentialId } });
+    }
+
+    // phoneNumber.waCredentialId is now null (SET NULL), delete the record
     await prisma.phoneNumber.delete({ where: { id: req.params.phoneId } });
-    return res.json({ success: true, message: "Phone number removed" });
+    return res.json({ success: true, message: "Phone number and account removed" });
   } catch (err) { next(err); }
 });
 

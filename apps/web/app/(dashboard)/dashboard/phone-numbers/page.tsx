@@ -71,6 +71,23 @@ function HealthBadge({ status, label }: { status: HealthStatus; label: string })
   );
 }
 
+// ── Avatar helpers ────────────────────────────────────────────────────────────
+const AVATAR_COLORS = [
+  "#5B8DEF","#8B5CF6","#EC4899","#EF4444","#F59E0B",
+  "#10B981","#06B6D4","#6366F1","#84CC16","#F97316",
+];
+function strToColor(s: string) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h);
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+function avatarInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 // ── Manual import form ────────────────────────────────────────────────────────
 const EMPTY_FORM = { name: "", appId: "", appSecret: "", accessToken: "", wabaId: "", phoneNumberId: "" };
 
@@ -84,6 +101,9 @@ function ImportForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   }
+
+  const previewName = form.name.trim() || "Auto";
+  const avatarBg = strToColor(previewName);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -126,18 +146,27 @@ function ImportForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: 
       )}
 
       <form onSubmit={handleSubmit} className="space-y-3">
-        <div>
-          <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-ink)" }}>
-            {t("fieldAccountLabel")}
-          </label>
-          <input
-            name="name"
-            value={form.name}
-            onChange={handleChange}
-            placeholder={t("placeholderCustomerSupport")}
-            className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2"
-            style={{ borderColor: "var(--color-rule)", ["--tw-ring-color" as any]: "var(--color-accent)" }}
-          />
+        {/* Avatar preview + name field side by side */}
+        <div className="flex items-center gap-3">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm transition-all"
+            style={{ background: avatarBg }}
+          >
+            {avatarInitials(previewName)}
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-ink)" }}>
+              {t("fieldAccountLabel")} <span style={{ color: "var(--color-muted)", fontWeight: 400 }}>(optional)</span>
+            </label>
+            <input
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              placeholder="Leave blank to use WhatsApp verified name"
+              className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2"
+              style={{ borderColor: "var(--color-rule)", ["--tw-ring-color" as any]: "var(--color-accent)" }}
+            />
+          </div>
         </div>
         {[
           { name: "appId",         labelKey: "fieldAppId",          ph: "placeholderMetaAppId" },
@@ -769,19 +798,27 @@ export default function PhoneNumbersPage() {
                       </td>
                       <td className="px-4 py-3">
                         {phone.waCredential ? (
-                          <>
-                            <div className="text-sm font-medium" style={{ color: "var(--color-ink)" }}>
-                              {phone.waCredential.name}
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
+                              style={{ background: strToColor(phone.waCredential.name) }}
+                            >
+                              {avatarInitials(phone.waCredential.name)}
                             </div>
-                            <div className="text-xs font-mono mt-0.5" style={{ color: "var(--color-muted)" }}>
-                              App: {phone.waCredential.appId}
-                            </div>
-                            {phone.waCredential.webhookError && (
-                              <div className="text-xs mt-0.5 text-red-500 max-w-[180px] break-all" title={phone.waCredential.webhookError}>
-                                ⚠ {phone.waCredential.webhookError.slice(0, 60)}{phone.waCredential.webhookError.length > 60 ? "…" : ""}
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium truncate" style={{ color: "var(--color-ink)" }}>
+                                {phone.waCredential.name}
                               </div>
-                            )}
-                          </>
+                              <div className="text-xs font-mono mt-0.5" style={{ color: "var(--color-muted)" }}>
+                                App: {phone.waCredential.appId}
+                              </div>
+                              {phone.waCredential.webhookError && (
+                                <div className="text-xs mt-0.5 text-red-500 max-w-[180px] break-all" title={phone.waCredential.webhookError}>
+                                  ⚠ {phone.waCredential.webhookError.slice(0, 60)}{phone.waCredential.webhookError.length > 60 ? "…" : ""}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         ) : (
                           <span style={{ color: "var(--color-muted)" }}>—</span>
                         )}

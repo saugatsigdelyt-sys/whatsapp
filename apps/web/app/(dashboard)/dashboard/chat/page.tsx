@@ -4,9 +4,26 @@ import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import api from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import { Send, Phone, MessageCircle, Search, CheckCheck, Check } from "lucide-react";
+import { Send, Phone, MessageCircle, Search, CheckCheck, Check, Clock } from "lucide-react";
 
 function fetcher(url: string) { return api.get(url).then((r) => r.data); }
+
+// ── Avatar helpers ────────────────────────────────────────────────────────────
+const AVATAR_COLORS = [
+  "#5B8DEF","#8B5CF6","#EC4899","#EF4444","#F59E0B",
+  "#10B981","#06B6D4","#6366F1","#84CC16","#F97316",
+];
+function strToColor(s: string) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h);
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+function avatarInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 interface WaCred { id: string; name: string; displayPhone: string | null; phoneNumberId: string; }
 interface Conversation {
@@ -18,6 +35,10 @@ interface Conversation {
 interface Message {
   id: string; direction: "INBOUND" | "OUTBOUND"; textBody: string | null;
   type: string; status: string; timestamp: string;
+}
+interface OptimisticMessage extends Message {
+  _optimistic: true;
+  _failed?: boolean;
 }
 
 function timeAgo(iso: string) {
@@ -37,28 +58,34 @@ export default function ChatPage() {
   const [selectedCredId, setSelectedCredId] = useState<string | null>(null);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
-  const [sending, setSending] = useState(false);
   const [search, setSearch] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // Per-conversation message cache — makes re-opening a conversation instant
+  const msgCache = useRef<Record<string, Message[]>>({});
+
+  // Optimistic messages tracked locally (bypasses SWR entirely for zero-delay render)
+  const [optimisticMsgs, setOptimisticMsgs] = useState<OptimisticMessage[]>([]);
+
+  // ── Accounts ──────────────────────────────────────────────────────────────
   const { data: accountsData } = useSWR("/api/accounts", fetcher, { refreshInterval: 5000 });
   const accounts: WaCred[] = accountsData?.data ?? [];
 
   useEffect(() => {
     if (accounts.length === 0) return;
-    // Auto-select first account on first load
     if (!selectedCredId) {
       setSelectedCredId(accounts[0].id);
       api.post("/api/conversations/backfill").catch(() => {});
       return;
     }
-    // If the selected account was deleted or transferred away, reset to first available
     if (!accounts.find((a) => a.id === selectedCredId)) {
       setSelectedCredId(accounts[0].id);
       setSelectedConvId(null);
     }
   }, [accounts, selectedCredId]);
 
+  // ── Conversations ─────────────────────────────────────────────────────────
   const convUrl = selectedCredId ? `/api/conversations?credentialId=${selectedCredId}` : null;
   const { data: convsData, mutate: mutateConvs } = useSWR(convUrl, fetcher, {
     refreshInterval: 1500,
@@ -71,69 +98,105 @@ export default function ChatPage() {
     !search || c.contactPhone.includes(search) || (c.contactName ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
+  // ── Messages ──────────────────────────────────────────────────────────────
   const msgUrl = selectedConvId ? `/api/conversations/${selectedConvId}/messages` : null;
   const { data: msgsData, mutate: mutateMsgs } = useSWR(msgUrl, fetcher, {
     refreshInterval: 1500,
     dedupingInterval: 500,
     revalidateOnFocus: true,
   });
-  const messages: Message[] = msgsData?.data ?? [];
+
+  // Populate cache and clear confirmed optimistic messages when real data arrives
+  useEffect(() => {
+    if (selectedConvId && msgsData?.data) {
+      msgCache.current[selectedConvId] = msgsData.data;
+      // Remove optimistic messages whose text is now confirmed in real data
+      const realTexts = new Set((msgsData.data as Message[]).map((m) => m.textBody));
+      setOptimisticMsgs((prev) =>
+        prev.filter((m) => m._failed || !realTexts.has(m.textBody))
+      );
+    }
+  }, [selectedConvId, msgsData?.data]);
+
+  // Clear optimistic messages when switching conversation
+  useEffect(() => { setOptimisticMsgs([]); }, [selectedConvId]);
+
+  // Real messages: use SWR data if available, else fall back to cache (instant re-opens)
+  const realMsgs: Message[] = msgsData?.data ?? (selectedConvId ? msgCache.current[selectedConvId] ?? [] : []);
+  const messages: (Message | OptimisticMessage)[] = [...realMsgs, ...optimisticMsgs];
+
   const activeConv = conversations.find((c) => c.id === selectedConvId);
 
+  // Auto-scroll when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // ── Send ──────────────────────────────────────────────────────────────────
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (!replyText.trim() || !selectedConvId || sending) return;
     const text = replyText.trim();
-    setSending(true);
-    setReplyText(""); // Clear immediately so user can type next message
+    if (!text || !selectedConvId) return;
 
-    // Optimistic update — show message instantly before server confirms
-    const optimisticMsg: Message = {
-      id: `optimistic-${Date.now()}`,
-      direction: "OUTBOUND",
-      textBody: text,
-      type: "TEXT",
-      status: "SENT",
-      timestamp: new Date().toISOString(),
+    // 1. Clear input IMMEDIATELY — user can start typing next message right away
+    setReplyText("");
+    inputRef.current?.focus();
+
+    // 2. Add optimistic bubble — renders in the same frame, zero perceived delay
+    const tempId = `opt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimistic: OptimisticMessage = {
+      id: tempId, direction: "OUTBOUND", textBody: text,
+      type: "TEXT", status: "SENDING", timestamp: new Date().toISOString(), _optimistic: true,
     };
-    mutateMsgs(
-      (prev: any) => ({ ...(prev ?? {}), data: [...(prev?.data ?? []), optimisticMsg] }),
-      false // skip revalidation so the optimistic message stays visible immediately
-    );
+    setOptimisticMsgs((prev) => [...prev, optimistic]);
 
+    // 3. Fire the API call in the background
     try {
       await api.post(`/api/conversations/${selectedConvId}/reply`, { text });
-      // Replace optimistic message with the real one from server
+      // Remove the optimistic bubble (real message will appear via SWR poll)
+      setOptimisticMsgs((prev) => prev.filter((m) => m.id !== tempId));
       mutateMsgs();
       mutateConvs();
     } catch (err: any) {
-      // Roll back optimistic message on failure
-      mutateMsgs();
-      setReplyText(text); // Restore text so user can retry
-      alert(err.response?.data?.error ?? t("failedToSend"));
-    } finally { setSending(false); }
+      // Mark as failed so user can see it didn't go through
+      setOptimisticMsgs((prev) =>
+        prev.map((m) => m.id === tempId ? { ...m, status: "FAILED", _failed: true } : m)
+      );
+      setReplyText(text); // Restore so user can retry
+      alert(err?.response?.data?.error ?? t("failedToSend"));
+    }
   }
 
   return (
     <div className="flex h-full -m-6 bg-gray-100">
-      {/* Phone tabs */}
-      <div className="w-16 bg-[#1a1a2e] flex flex-col items-center py-3 gap-2 shrink-0">
+      {/* Phone account tabs */}
+      <div className="w-[72px] bg-[#1a1a2e] flex flex-col items-center py-3 gap-1 shrink-0 overflow-y-auto">
         {accounts.map((acc) => {
-          const initials = (acc.name ?? acc.displayPhone ?? "?")[0].toUpperCase();
+          const label = acc.name || acc.displayPhone || "?";
+          const color = strToColor(acc.id);
+          const initials = avatarInitials(label);
           const isActive = acc.id === selectedCredId;
           return (
-            <button key={acc.id} onClick={() => { setSelectedCredId(acc.id); setSelectedConvId(null); }} title={acc.name}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold transition-all ${isActive ? "bg-brand-500 text-white shadow-lg scale-105" : "bg-white/10 text-white/70 hover:bg-white/20"}`}>
-              {initials}
+            <button
+              key={acc.id}
+              onClick={() => { setSelectedCredId(acc.id); setSelectedConvId(null); }}
+              title={label}
+              className={`w-full flex flex-col items-center px-1 py-2 rounded-xl transition-all gap-1 ${isActive ? "bg-white/10" : "hover:bg-white/5"}`}
+            >
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-sm transition-all ${isActive ? "ring-2 ring-white/60 scale-105" : ""}`}
+                style={{ background: color }}
+              >
+                {initials}
+              </div>
+              <span className="text-[9px] text-white/60 text-center leading-tight w-full truncate px-0.5" style={{ maxWidth: "60px" }}>
+                {label}
+              </span>
             </button>
           );
         })}
         {accounts.length === 0 && (
-          <div className="text-white/30 text-xs text-center px-1 mt-4">{t("noPhones")}</div>
+          <div className="text-white/30 text-[10px] text-center px-1 mt-4">{t("noPhones")}</div>
         )}
       </div>
 
@@ -228,25 +291,41 @@ export default function ChatPage() {
               style={{ background: "url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23d4d4d4\" fill-opacity=\"0.15\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E'), #e5ddd5" }}>
               {messages.map((msg, i) => {
                 const isOut = msg.direction === "OUTBOUND";
-                const showTime = i === messages.length - 1 || new Date(messages[i + 1]?.timestamp).getTime() - new Date(msg.timestamp).getTime() > 300000;
+                const isOptimistic = "_optimistic" in msg;
+                const isFailed = "_failed" in msg && (msg as OptimisticMessage)._failed;
                 return (
                   <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[65%] ${isOut ? "items-end" : "items-start"} flex flex-col`}>
-                      <div className={`px-3 py-2 rounded-lg text-sm shadow-sm ${isOut ? "bg-[#dcf8c6] rounded-br-none" : "bg-white rounded-bl-none"}`}>
+                      <div className={`px-3 py-2 rounded-lg text-sm shadow-sm transition-opacity ${
+                        isOut ? "bg-[#dcf8c6] rounded-br-none" : "bg-white rounded-bl-none"
+                      } ${isOptimistic && !isFailed ? "opacity-75" : ""} ${isFailed ? "bg-red-100" : ""}`}>
                         {msg.textBody ?? (
                           <span className="italic text-gray-400 text-xs">
                             {msg.type === "IMAGE" ? "📷 Image" : msg.type === "AUDIO" ? "🎵 Audio" : msg.type === "VIDEO" ? "🎥 Video" : msg.type === "DOCUMENT" ? "📄 Document" : `[${msg.type}]`}
                           </span>
                         )}
                         <div className={`flex items-center gap-1 mt-0.5 ${isOut ? "justify-end" : "justify-start"}`}>
-                          <span className="text-[10px] text-gray-400">{formatTime(msg.timestamp)}</span>
+                          <span className={`text-[10px] ${isFailed ? "text-red-400" : "text-gray-400"}`}>
+                            {isFailed ? "Failed" : formatTime(msg.timestamp)}
+                          </span>
                           {isOut && (
+                            isFailed ? <span className="text-[10px] text-red-400">✕</span> :
+                            isOptimistic ? <Clock size={10} className="text-gray-400" /> :
                             msg.status === "READ" ? <CheckCheck size={11} className="text-blue-500" /> :
                             msg.status === "DELIVERED" ? <CheckCheck size={11} className="text-gray-400" /> :
                             <Check size={11} className="text-gray-400" />
                           )}
                         </div>
                       </div>
+                      {isFailed && (
+                        <button onClick={() => {
+                          setOptimisticMsgs((prev) => prev.filter((m) => m.id !== msg.id));
+                          setReplyText(msg.textBody ?? "");
+                          inputRef.current?.focus();
+                        }} className="text-[10px] text-red-500 mt-0.5 hover:underline self-end">
+                          Tap to retry
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -256,12 +335,15 @@ export default function ChatPage() {
 
             <div className="px-4 py-3 bg-[#f0f2f5] border-t border-gray-200">
               <form onSubmit={handleSend} className="flex items-center gap-2">
-                <input value={replyText} onChange={(e) => setReplyText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
+                <input
+                  ref={inputRef}
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e as any); } }}
                   placeholder={t("typeAMessage")}
                   className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-                  disabled={sending} />
-                <button type="submit" disabled={!replyText.trim() || sending}
+                />
+                <button type="submit" disabled={!replyText.trim()}
                   className="w-10 h-10 bg-brand-600 text-white rounded-full flex items-center justify-center hover:bg-brand-700 disabled:opacity-40 transition-colors shrink-0">
                   <Send size={16} />
                 </button>
