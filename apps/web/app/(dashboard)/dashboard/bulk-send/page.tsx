@@ -119,7 +119,10 @@ export default function BulkSendPage() {
     try {
       await api.post("/api/templates/sync", { credentialId: credId });
       mutate(`/api/templates?credentialId=${credId}`);
-    } catch { alert(t("syncFailed")); }
+    } catch (err: any) {
+      const msg = err.response?.data?.error ?? t("syncFailed");
+      alert(`Sync failed: ${msg}\n\nIf the token is expired, re-import the account with a fresh access token.`);
+    }
     finally { setSyncing(false); }
   }
 

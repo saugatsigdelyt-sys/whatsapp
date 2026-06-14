@@ -409,6 +409,7 @@ export default function TemplatesPage() {
   const [credId, setCredId] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [syncErrors, setSyncErrors] = useState<{ name: string; error: string }[]>([]);
   const [showBuilder, setShowBuilder] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -430,12 +431,23 @@ export default function TemplatesPage() {
 
   async function handleSync() {
     setSyncing(true);
+    setSyncErrors([]);
+    const errs: { name: string; error: string }[] = [];
     try {
       const creds = credId ? [credId] : accounts.map((a) => a.id);
-      for (const cid of creds) { await api.post("/api/templates/sync", { credentialId: cid }); }
+      for (const cid of creds) {
+        const accName = accounts.find((a) => a.id === cid)?.name ?? cid;
+        try {
+          await api.post("/api/templates/sync", { credentialId: cid });
+        } catch (err: any) {
+          errs.push({ name: accName, error: err.response?.data?.error ?? "Unknown error" });
+        }
+      }
       mutate(`/api/templates${credId ? `?credentialId=${credId}` : ""}`);
-    } catch { alert(t("syncFailed")); }
-    finally { setSyncing(false); }
+      if (errs.length > 0) setSyncErrors(errs);
+    } catch (err: any) {
+      setSyncErrors([{ name: "Sync", error: err.response?.data?.error ?? t("syncFailed") }]);
+    } finally { setSyncing(false); }
   }
 
   async function handleDelete(id: string) {
@@ -470,6 +482,19 @@ export default function TemplatesPage() {
           </button>
         </div>
       </div>
+
+      {syncErrors.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-1">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-red-700">Sync failed for {syncErrors.length} account{syncErrors.length > 1 ? "s" : ""}:</p>
+            <button onClick={() => setSyncErrors([])} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+          </div>
+          {syncErrors.map((e, i) => (
+            <p key={i} className="text-xs text-red-700"><span className="font-medium">{e.name}:</span> {e.error}</p>
+          ))}
+          <p className="text-xs text-red-500 mt-1">This usually means the access token is expired. Re-import the account with a fresh token to fix it.</p>
+        </div>
+      )}
 
       {templates.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
