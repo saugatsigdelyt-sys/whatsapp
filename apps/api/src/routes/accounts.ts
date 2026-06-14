@@ -170,10 +170,14 @@ accountsRouter.post("/import", async (req, res, next) => {
       });
     }
 
-    // Sync phone numbers from Meta
-    // NOTE: We also transfer businessId so phones previously under admin's
-    // business are moved to the importing user's business automatically.
+    // Sync phone numbers from Meta + transfer ownership of any previously claimed phones
     const phones = await getPhoneNumbers({ wabaId: body.wabaId, accessToken: body.accessToken });
+    // Build the list of phoneNumberIds we are taking ownership of.
+    // Always include the explicitly-provided phoneNumberId; add any extras Meta returns.
+    const phoneIdsToTransfer = phones.success && phones.phoneNumbers
+      ? [...new Set([body.phoneNumberId, ...phones.phoneNumbers.map((p) => p.id)])]
+      : [body.phoneNumberId];
+
     if (phones.success && phones.phoneNumbers) {
       for (const phone of phones.phoneNumbers) {
         await prisma.phoneNumber.upsert({
@@ -192,6 +196,69 @@ accountsRouter.post("/import", async (req, res, next) => {
         });
       }
     }
+
+    // ── Clean up stale credentials from other businesses ──────────────────────
+    // Any credential in another business that claimed one of these phoneNumberIds
+    // is now stale.  We transfer its conversations/messages to us, then delete it.
+    for (const pid of phoneIdsToTransfer) {
+      const oldCreds = await prisma.waCredential.findMany({
+        where: { phoneNumberId: pid, businessId: { not: businessId } },
+        select: { id: true, businessId: true },
+      });
+
+      for (const oldCred of oldCreds) {
+        console.log(`[import] Transferring phone ${pid} from business ${oldCred.businessId} → ${businessId}`);
+
+        // Find all conversations under the old credential
+        const oldConvs = await prisma.conversation.findMany({
+          where: { waCredentialId: oldCred.id },
+          select: { id: true, contactPhone: true },
+        });
+
+        for (const oldConv of oldConvs) {
+          // Check if new credential already has a conversation with this contactPhone
+          const duplicate = await prisma.conversation.findUnique({
+            where: { waCredentialId_contactPhone: { waCredentialId: credential.id, contactPhone: oldConv.contactPhone } },
+            select: { id: true },
+          });
+
+          if (duplicate) {
+            // Merge: move messages into the existing conversation
+            await prisma.message.updateMany({
+              where: { conversationId: oldConv.id },
+              data: { conversationId: duplicate.id, businessId },
+            });
+            // Delete the now-empty old conversation
+            await prisma.conversation.delete({ where: { id: oldConv.id } });
+          } else {
+            // Transfer conversation to new credential + business
+            await prisma.message.updateMany({
+              where: { conversationId: oldConv.id },
+              data: { businessId },
+            });
+            await prisma.conversation.update({
+              where: { id: oldConv.id },
+              data: { businessId, waCredentialId: credential.id },
+            });
+          }
+        }
+
+        // Transfer any orphan messages that referenced old business but have no conversation
+        await prisma.message.updateMany({
+          where: { businessId: oldCred.businessId, conversationId: null },
+          data: { businessId },
+        });
+
+        // Clean up templates and bulk jobs that would block deletion
+        await prisma.messageTemplate.deleteMany({ where: { waCredentialId: oldCred.id } });
+        await prisma.bulkSendJob.deleteMany({ where: { waCredentialId: oldCred.id } });
+
+        // Delete old credential (WaAccountAccess rows cascade automatically)
+        await prisma.waCredential.delete({ where: { id: oldCred.id } });
+        console.log(`[import] Deleted stale credential ${oldCred.id} from business ${oldCred.businessId}`);
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Auto-register webhook (non-fatal if it fails)
     let webhookStatus: { success: boolean; error?: string } = { success: false, error: "Not attempted" };

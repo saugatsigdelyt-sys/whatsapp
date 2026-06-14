@@ -41,13 +41,21 @@ export default function ChatPage() {
   const [search, setSearch] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { data: accountsData } = useSWR("/api/accounts", fetcher, { refreshInterval: 30000 });
+  const { data: accountsData } = useSWR("/api/accounts", fetcher, { refreshInterval: 5000 });
   const accounts: WaCred[] = accountsData?.data ?? [];
 
   useEffect(() => {
-    if (accounts.length > 0 && !selectedCredId) {
+    if (accounts.length === 0) return;
+    // Auto-select first account on first load
+    if (!selectedCredId) {
       setSelectedCredId(accounts[0].id);
       api.post("/api/conversations/backfill").catch(() => {});
+      return;
+    }
+    // If the selected account was deleted or transferred away, reset to first available
+    if (!accounts.find((a) => a.id === selectedCredId)) {
+      setSelectedCredId(accounts[0].id);
+      setSelectedConvId(null);
     }
   }, [accounts, selectedCredId]);
 
