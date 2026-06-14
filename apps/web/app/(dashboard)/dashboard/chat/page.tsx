@@ -79,13 +79,33 @@ export default function ChatPage() {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     if (!replyText.trim() || !selectedConvId || sending) return;
+    const text = replyText.trim();
     setSending(true);
+    setReplyText(""); // Clear immediately so user can type next message
+
+    // Optimistic update — show message instantly before server confirms
+    const optimisticMsg: Message = {
+      id: `optimistic-${Date.now()}`,
+      direction: "OUTBOUND",
+      textBody: text,
+      type: "TEXT",
+      status: "SENT",
+      timestamp: new Date().toISOString(),
+    };
+    mutateMsgs(
+      (prev: any) => ({ ...(prev ?? {}), data: [...(prev?.data ?? []), optimisticMsg] }),
+      false // skip revalidation so the optimistic message stays visible immediately
+    );
+
     try {
-      await api.post(`/api/conversations/${selectedConvId}/reply`, { text: replyText.trim() });
-      setReplyText("");
+      await api.post(`/api/conversations/${selectedConvId}/reply`, { text });
+      // Replace optimistic message with the real one from server
       mutateMsgs();
       mutateConvs();
     } catch (err: any) {
+      // Roll back optimistic message on failure
+      mutateMsgs();
+      setReplyText(text); // Restore text so user can retry
       alert(err.response?.data?.error ?? t("failedToSend"));
     } finally { setSending(false); }
   }

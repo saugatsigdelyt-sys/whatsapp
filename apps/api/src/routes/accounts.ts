@@ -171,12 +171,15 @@ accountsRouter.post("/import", async (req, res, next) => {
     }
 
     // Sync phone numbers from Meta
+    // NOTE: We also transfer businessId so phones previously under admin's
+    // business are moved to the importing user's business automatically.
     const phones = await getPhoneNumbers({ wabaId: body.wabaId, accessToken: body.accessToken });
     if (phones.success && phones.phoneNumbers) {
       for (const phone of phones.phoneNumbers) {
         await prisma.phoneNumber.upsert({
           where: { phoneNumberId: phone.id },
           update: {
+            businessId,                              // ← transfer ownership to importing user
             displayPhone: phone.display_phone_number, verifiedName: phone.verified_name,
             qualityRating: phone.quality_rating, status: phone.status,
             waCredentialId: credential.id, healthError: null,
@@ -287,6 +290,7 @@ accountsRouter.post("/phone-numbers/refresh", async (req, res, next) => {
           await prisma.phoneNumber.upsert({
             where: { phoneNumberId: phone.id },
             update: {
+              businessId,                              // ← keep ownership correct on refresh
               displayPhone: phone.display_phone_number, verifiedName: phone.verified_name,
               qualityRating: phone.quality_rating, status: phone.status,
               waCredentialId: cred.id, healthError: null,

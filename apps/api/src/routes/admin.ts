@@ -412,6 +412,12 @@ adminRouter.post("/my-accounts/refresh-all", async (req, res, next) => {
 
           if (result.success && result.phoneNumbers) {
             for (const phone of result.phoneNumbers) {
+              // Don't reclaim phones that have been transferred to another business's user
+              const existing = await prisma.phoneNumber.findUnique({ where: { phoneNumberId: phone.id }, select: { businessId: true } });
+              if (existing && existing.businessId !== businessId) {
+                console.log(`[refresh-all] Skipping phone ${phone.id} — transferred to business ${existing.businessId}`);
+                continue;
+              }
               await prisma.phoneNumber.upsert({
                 where: { phoneNumberId: phone.id },
                 update: {
@@ -463,6 +469,11 @@ adminRouter.post("/my-accounts/:id/refresh", async (req, res, next) => {
 
     if (result.success && result.phoneNumbers) {
       for (const phone of result.phoneNumbers) {
+        // Don't reclaim phones that have been transferred to another business's user
+        const existing = await prisma.phoneNumber.findUnique({ where: { phoneNumberId: phone.id }, select: { businessId: true } });
+        if (existing && existing.businessId !== businessId) {
+          continue;
+        }
         await prisma.phoneNumber.upsert({
           where: { phoneNumberId: phone.id },
           update: {
